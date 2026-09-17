@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BukSU Chat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="login-screen" class="screen">
+    <h1>BukSU Chat</h1>
+    <p>Random video &amp; text chat, exclusive to BukSU students.</p>
+    <button id="login-btn">Login with BukSU Email</button>
+  </div>
+
+  <div id="app-screen" class="screen" style="display:none;">
+    <header>
+      <span id="user-email"></span>
+      <button id="logout-btn">Logout</button>
+    </header>
+
+    <div id="video-container">
+      <video id="local-video" autoplay muted playsinline></video>
+      <video id="remote-video" autoplay playsinline></video>
+    </div>
+
+    <div id="status-bar">
+      <span id="status-text">Not connected</span>
+    </div>
+
+    <div id="controls">
+      <button id="find-btn">Find Match</button>
+      <button id="next-btn" style="display:none;">Next</button>
+      <button id="stop-btn" style="display:none;">Stop</button>
+      <button id="report-btn" style="display:none;">Report</button>
+    </div>
+
+    <div id="chat-container">
+      <div id="chat-box"></div>
+      <div id="chat-input-row">
+        <input id="chat-input" placeholder="Type a message..." disabled>
+        <button id="send-btn" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

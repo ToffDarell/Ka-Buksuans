@@ -1,0 +1,144 @@
+:root {
+  --navy: #0b1f4d;
+  --navy-dark: #071633;
+  --gold: #ffc72c;
+  --white: #ffffff;
+  --gray: #e5e7eb;
+  --danger: #dc2626;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+body {
+  background: var(--navy-dark);
+  color: var(--white);
+  min-height: 100vh;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+}
+
+#login-screen {
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+}
+
+#login-screen h1 {
+  color: var(--gold);
+  font-size: 2rem;
+}
+
+button {
+  background: var(--gold);
+  color: var(--navy-dark);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#app-screen {
+  width: 100%;
+  max-width: 900px;
+  gap: 16px;
+}
+
+header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--navy);
+}
+
+#video-container {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+video {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  background: black;
+  border-radius: 8px;
+  border: 2px solid var(--gold);
+}
+
+#status-bar {
+  font-size: 0.9rem;
+  color: var(--gold);
+}
+
+#controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#report-btn {
+  background: var(--danger);
+  color: var(--white);
+}
+
+#chat-container {
+  width: 100%;
+  background: var(--navy);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#chat-box {
+  height: 180px;
+  overflow-y: auto;
+  background: var(--navy-dark);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 0.9rem;
+}
+
+#chat-box p {
+  margin-bottom: 6px;
+}
+
+#chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+#chat-input {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+}
