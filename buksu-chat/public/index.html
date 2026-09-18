@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>BukSU Chat</title>
+  <title>Ka-Buksuan</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Stencil:wght@600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Big+Shoulders+Stencil:wght@600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <script>
     // Applied before first paint so there's no flash of the wrong theme.
     (function () {
@@ -31,11 +32,11 @@
   <div id="login-screen" class="screen">
     <div class="login-card">
       <div class="patch">
-        <svg class="patch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/></svg>
+        <svg class="patch-icon" viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
       </div>
-      <h1 class="wordmark">BukSU Chat</h1>
-      <p class="tagline">Student Network &middot; Random Video Chat</p>
-      <p class="blurb">Meet a random BukSU student for a live video &amp; text chat. Exclusive to verified student emails.</p>
+      <h1 class="wordmark">Ka-Buksuan</h1>
+      <p class="tagline">Random Video Chat</p>
+      <p class="blurb">Meet a random Buksuan for a live video or text chat. Exclusive to Buksu Student.</p>
       <button id="login-btn" class="btn-pennant">Login with BukSU Email</button>
     </div>
   </div>
@@ -43,8 +44,8 @@
   <div id="app-screen" class="screen" style="display:none;">
     <header>
       <span class="brand">
-        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/></svg>
-        <span class="brand-word">BukSU Chat</span>
+        <svg class="brand-icon" viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
+        <span class="brand-word">Ka-Buksuan</span>
       </span>
       <div class="header-right">
         <span id="user-email"></span>
@@ -69,15 +70,20 @@
       </div>
 
       <div class="field">
-        <label for="course-input">Course / Major <span class="optional-tag">optional</span></label>
+        <label for="course-input">Course<span class="optional-tag">optional</span></label>
         <input id="course-input" type="text" placeholder="e.g. BSIT, BSCS, BSED" maxlength="40" list="course-suggestions">
         <datalist id="course-suggestions">
           <option value="BSIT"></option>
-          <option value="BSCS"></option>
           <option value="BSED"></option>
           <option value="BSBA"></option>
           <option value="BSN"></option>
-          <option value="BSCRIM"></option>
+          <option value="BSCOMDEV"></option>
+          <option value="BSDEVCOM"></option>
+          <option value="BSCS"></option>
+          <option value="BSHRM"></option>
+          <option value="BSBA"></option>
+          <option value="BSCEMC"></option>
+
         </datalist>
       </div>
 
@@ -85,6 +91,20 @@
         <input type="checkbox" id="same-college-checkbox">
         <span>Match me only with students from my college</span>
       </label>
+
+      <div class="field">
+        <label>Chat Mode</label>
+        <div class="mode-toggle" role="radiogroup" aria-label="Chat mode">
+          <label class="mode-option">
+            <input type="radio" name="chat-mode" id="mode-video" value="video" checked>
+            <span>Video + Text</span>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="chat-mode" id="mode-text" value="text">
+            <span>Text Only</span>
+          </label>
+        </div>
+      </div>
 
       <button id="find-btn" class="btn-pennant" disabled>Find Match</button>
     </div>
@@ -131,6 +151,18 @@
       </div>
     </div>
   </div>
+
+  <dialog id="modal-dialog" class="modal-dialog" aria-labelledby="modal-title">
+    <form method="dialog" class="modal-form">
+      <h3 id="modal-title" class="modal-title"></h3>
+      <p id="modal-message" class="modal-message"></p>
+      <textarea id="modal-input" class="modal-input" rows="3" hidden></textarea>
+      <div class="modal-actions">
+        <button id="modal-cancel-btn" value="cancel" formnovalidate class="btn-patch">Cancel</button>
+        <button id="modal-ok-btn" value="ok" class="btn-pennant btn-small">OK</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>

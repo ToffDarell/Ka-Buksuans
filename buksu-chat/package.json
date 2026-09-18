@@ -1,12 +1,13 @@
 {
-  "name": "buksu-chat",
+  "name": "ka-buksuan",
   "version": "1.0.0",
-  "description": "BukSU student random chat/video app",
+  "description": "Ka-Buksuan — random video/text chat for BukSU students",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "socket.io": "^4.7.5"

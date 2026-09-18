@@ -12,7 +12,7 @@
 
   --font-script: "Yellowtail", cursive;
   --font-stencil: "Big Shoulders Stencil", sans-serif;
-  --font-body: "Archivo", sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
 
   /* Themed surface palette — dark (default) values. */
   --bg-top: #142c63;
@@ -122,8 +122,8 @@ body::after {
 /* ---------- Theme toggle ---------- */
 .theme-toggle {
   position: fixed;
-  top: max(16px, env(safe-area-inset-top, 16px));
-  right: 16px;
+  top: max(28px, calc(env(safe-area-inset-top, 0px) + 24px));
+  right: max(16px, env(safe-area-inset-right, 16px));
   z-index: 20;
   width: 42px;
   height: 42px;
@@ -262,7 +262,7 @@ body::after {
 
 /* ---------- Buttons ---------- */
 button {
-  font-family: var(--font-stencil);
+  font-family: var(--font-body);
   cursor: pointer;
 }
 
@@ -274,8 +274,6 @@ button:disabled {
 .btn-pennant {
   position: relative;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   font-size: 0.95rem;
   background: linear-gradient(180deg, var(--gold-bright), var(--gold-deep));
   color: var(--navy-abyss);
@@ -305,8 +303,6 @@ button:disabled {
 
 .btn-patch {
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   font-size: 0.85rem;
   background: var(--btn-patch-bg);
   color: var(--btn-patch-text);
@@ -328,8 +324,6 @@ button:disabled {
 
 .btn-report {
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   font-size: 0.85rem;
   background: transparent;
   color: var(--danger);
@@ -371,6 +365,9 @@ header {
   flex-wrap: wrap;
   gap: 12px;
   padding-bottom: 16px;
+  /* Keeps header content clear of the fixed theme-toggle button, which
+     sits in the same top-right corner outside the header's own flow. */
+  padding-right: 56px;
   border-bottom: 2px dashed var(--border-dashed-soft);
   animation: riseIn 0.5s ease both;
 }
@@ -493,6 +490,48 @@ select option {
   flex-shrink: 0;
 }
 
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--btn-patch-text);
+  background: var(--btn-patch-bg);
+  border: 2px dashed var(--btn-patch-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.mode-option:hover {
+  border-color: var(--gold);
+}
+
+.mode-option input[type="radio"] {
+  accent-color: var(--gold);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mode-option:has(input:checked) {
+  border-color: var(--gold);
+  background: rgba(255, 199, 44, 0.14);
+  color: var(--text-accent);
+}
+
 #lobby-panel .btn-pennant {
   align-self: flex-start;
   margin-top: 4px;
@@ -554,10 +593,9 @@ select option {
   position: absolute;
   top: 10px;
   right: 10px;
-  font-family: var(--font-stencil);
-  font-size: 0.68rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.7rem;
   padding: 5px 11px;
   background: linear-gradient(180deg, var(--gold-bright), var(--gold-deep));
   color: var(--navy-abyss);
@@ -644,10 +682,9 @@ select option {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--font-stencil);
+  font-family: var(--font-body);
+  font-weight: 500;
   font-size: 0.85rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-muted);
   background: var(--status-bg);
   border: 1px solid var(--status-border);
@@ -732,7 +769,8 @@ select option {
   max-width: 85%;
   padding: 7px 12px;
   border-radius: 10px;
-  line-height: 1.4;
+  letter-spacing: -0.01em;
+  line-height: 1.6;
   word-break: break-word;
 }
 
@@ -753,11 +791,8 @@ select option {
   background: none;
   opacity: 0.8;
   font-style: italic;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
-  font-family: var(--font-stencil);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 #chat-input-row {
@@ -773,10 +808,142 @@ select option {
   color: var(--text-muted);
 }
 
+/* ---------- Modal (native <dialog>; replaces native alert/prompt/confirm) ---------- */
+.modal-dialog {
+  border: none;
+  padding: 0;
+  margin: auto;
+  background: transparent;
+  max-width: 380px;
+  width: calc(100% - 40px);
+  max-height: calc(100% - 40px);
+  color: inherit;
+  animation: modalPop 0.18s ease both;
+}
+
+.modal-dialog::backdrop {
+  background: rgba(5, 13, 33, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-form {
+  background: var(--surface-card);
+  border: 2px dashed var(--border-dashed);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+}
+
+.modal-title {
+  font-family: var(--font-stencil);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 1rem;
+  color: var(--text-accent);
+  margin-bottom: 8px;
+}
+
+.modal-title[hidden] {
+  display: none;
+}
+
+.modal-message {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.modal-message[hidden] {
+  display: none;
+}
+
+.modal-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  color: var(--input-text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 11px 12px;
+  resize: vertical;
+  margin-bottom: 18px;
+}
+
+.modal-input[hidden] {
+  display: none;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-actions .btn-patch[hidden] {
+  display: none;
+}
+
 /* ---------- Responsive ---------- */
+@media (max-width: 700px) {
+  #app-screen.in-call .video-tile {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  header {
+    padding-right: 48px;
+  }
+
+  .modal-dialog {
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 480px) {
   .screen {
     padding: 24px 16px;
+  }
+
+  .theme-toggle {
+    top: max(24px, calc(env(safe-area-inset-top, 0px) + 20px));
+    right: max(12px, env(safe-area-inset-right, 12px));
+    width: 36px;
+    height: 36px;
+  }
+
+  .theme-toggle svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  header {
+    padding-right: 44px;
+    gap: 8px;
+  }
+
+  #user-email {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .login-card {
@@ -795,5 +962,28 @@ select option {
 
   #controls button {
     flex: 1 1 auto;
+  }
+
+  .modal-form {
+    padding: 20px;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .wordmark {
+    font-size: 2rem;
+  }
+
+  #user-email {
+    display: none;
   }
 }

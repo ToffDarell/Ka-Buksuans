@@ -4,11 +4,56 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 const server = http.createServer(app);
+
+// Comma-separated list of origins allowed to open a socket connection.
+// Defaults to local dev; set ALLOWED_ORIGINS in Render to the real deployed
+// URL(s) (e.g. https://ka-buksuan.onrender.com) once you know it.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: allowedOrigins }
+});
+
+const STUDENT_EMAIL_DOMAIN = "@student.buksu.edu.ph";
+
+// Server-only admin client — verifies session tokens and writes reports
+// with full access, bypassing RLS. SUPABASE_SERVICE_ROLE_KEY must never be
+// sent to the browser or added to the /supabase-config.js route below.
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
+// Rejects the connection before any handler runs unless the client proves,
+// via a live Supabase access token, that it's a signed-in BukSU student.
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth && socket.handshake.auth.token;
+
+  if (!token) {
+    return next(new Error("Authentication required"));
+  }
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !data?.user) {
+    return next(new Error("Invalid or expired session"));
+  }
+
+  const email = data.user.email || "";
+  if (!email.endsWith(STUDENT_EMAIL_DOMAIN)) {
+    return next(new Error("Only BukSU student emails are allowed"));
+  }
+
+  socket.data.user = { id: data.user.id, email };
+  next();
 });
 
 // Serve the Supabase config from env vars instead of committing the key to source.
@@ -23,32 +68,96 @@ app.get("/supabase-config.js", (_req, res) => {
 app.use(express.static(path.join(__dirname, "public")));
 
 const COLLEGES = ["COT", "CAS", "COE", "COB", "COL", "CON"];
+const CHAT_MODES = ["video", "text"];
 
-// In-memory waiting queue. Holds { socketId, college, course, matchSameCollege }.
+// In-memory waiting queue. Holds { socketId, college, course, matchSameCollege, mode }.
 let waitingQueue = [];
 
 // Tracks which room each socket currently belongs to.
 const socketRooms = new Map();
+
+// ---------- Rate limiting ----------
+const CHAT_RATE_LIMIT_MAX = 5;
+const CHAT_RATE_LIMIT_WINDOW_MS = 3000;
+const CHAT_MESSAGE_MAX_LENGTH = 500;
+const FIND_MATCH_COOLDOWN_MS = 1000;
+
+// socket.id -> array of message timestamps within the current window.
+const chatMessageTimestamps = new Map();
+// socket.id -> timestamp of the last accepted "find-match" emit.
+const lastFindMatchAt = new Map();
+
+function isChatRateLimited(socketId) {
+  const now = Date.now();
+  const timestamps = (chatMessageTimestamps.get(socketId) || []).filter(
+    (t) => now - t < CHAT_RATE_LIMIT_WINDOW_MS
+  );
+
+  if (timestamps.length >= CHAT_RATE_LIMIT_MAX) {
+    chatMessageTimestamps.set(socketId, timestamps);
+    return true;
+  }
+
+  timestamps.push(now);
+  chatMessageTimestamps.set(socketId, timestamps);
+  return false;
+}
+
+function isFindMatchOnCooldown(socketId) {
+  const now = Date.now();
+  const lastAt = lastFindMatchAt.get(socketId);
+
+  if (lastAt !== undefined && now - lastAt < FIND_MATCH_COOLDOWN_MS) {
+    return true;
+  }
+
+  lastFindMatchAt.set(socketId, now);
+  return false;
+}
 
 // Two waiting students are compatible only if each side's "same college"
 // preference (if set) is satisfied by the other side's college.
 function isCompatible(a, b) {
   if (a.matchSameCollege && a.college !== b.college) return false;
   if (b.matchSameCollege && b.college !== a.college) return false;
+  if (a.mode !== b.mode) return false;
   return true;
+}
+
+// Builds a short "what matched" summary for two paired students, using only
+// the college/course values they already submitted for matching. Returns
+// null when neither lines up, so the client shows no message at all.
+function buildMatchInfo(a, b) {
+  const sameCollege = a.college === b.college;
+  const sameCourse = !!a.course && !!b.course && a.course.toLowerCase() === b.course.toLowerCase();
+
+  if (!sameCollege && !sameCourse) return null;
+
+  return {
+    sameCollege,
+    sameCourse,
+    college: sameCollege ? a.college : null,
+    course: sameCourse ? a.course : null
+  };
 }
 
 io.on("connection", (socket) => {
   console.log(`Connected: ${socket.id}`);
 
   socket.on("find-match", (payload = {}) => {
+    if (isFindMatchOnCooldown(socket.id)) {
+      socket.emit("rate-limited", { context: "find-match" });
+      return;
+    }
+
     const college = typeof payload.college === "string" ? payload.college.trim() : "";
     const course = typeof payload.course === "string" ? payload.course.trim().slice(0, 40) : "";
     const matchSameCollege = !!payload.matchSameCollege;
+    const mode = CHAT_MODES.includes(payload.mode) ? payload.mode : "video";
 
     if (!COLLEGES.includes(college)) return;
 
-    const profile = { college, course, matchSameCollege };
+    const profile = { college, course, matchSameCollege, mode };
 
     // Remove any stale entry for this socket first (e.g. re-clicking Find Match).
     waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);
@@ -82,16 +191,22 @@ io.on("connection", (socket) => {
       socketRooms.set(socket.id, roomId);
       socketRooms.set(entry.socketId, roomId);
 
+      const matchInfo = buildMatchInfo(profile, entry);
+
       // Tell one side to be the WebRTC offer initiator, and hand each side
       // the other's college/course so the UI can show a match badge.
       socket.emit("match-found", {
         roomId,
         initiator: true,
+        mode: profile.mode,
+        matchInfo,
         partner: { college: entry.college, course: entry.course }
       });
       partnerSocket.emit("match-found", {
         roomId,
         initiator: false,
+        mode: profile.mode,
+        matchInfo,
         partner: { college: profile.college, course: profile.course }
       });
     } else {
@@ -102,12 +217,54 @@ io.on("connection", (socket) => {
 
   // Relay WebRTC signaling data (SDP offers/answers, ICE candidates)
   socket.on("signal", ({ roomId, data }) => {
+    if (!roomId || !socket.rooms.has(roomId)) return;
     socket.to(roomId).emit("signal", data);
   });
 
   // Text chat relay
   socket.on("chat-message", ({ roomId, message }) => {
-    socket.to(roomId).emit("chat-message", message);
+    if (!roomId || !socket.rooms.has(roomId)) return;
+
+    if (isChatRateLimited(socket.id)) {
+      socket.emit("rate-limited", { context: "chat-message" });
+      return;
+    }
+
+    const trimmedMessage = typeof message === "string" ? message.slice(0, CHAT_MESSAGE_MAX_LENGTH) : message;
+    socket.to(roomId).emit("chat-message", trimmedMessage);
+  });
+
+  // Report the current partner. Runs server-side so the reported user's
+  // verified id never has to be sent to the reporting client.
+  socket.on("report", async ({ roomId, reason } = {}, callback) => {
+    if (typeof callback !== "function") return;
+
+    if (!roomId || !socket.rooms.has(roomId)) {
+      return callback({ error: "You're not in an active chat." });
+    }
+
+    const trimmedReason = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
+    if (!trimmedReason) {
+      return callback({ error: "Please describe the issue." });
+    }
+
+    const room = io.sockets.adapter.rooms.get(roomId);
+    const partnerSocketId = room ? [...room].find((id) => id !== socket.id) : null;
+    const partnerSocket = partnerSocketId ? io.sockets.sockets.get(partnerSocketId) : null;
+
+    const { error } = await supabaseAdmin.from("reports").insert({
+      reporter_id: socket.data.user.id,
+      reported_id: partnerSocket?.data?.user?.id || null,
+      reason: trimmedReason,
+      session_id: roomId
+    });
+
+    if (error) {
+      console.error("Report insert error:", error.message);
+      return callback({ error: "Failed to submit report." });
+    }
+
+    callback({ error: null });
   });
 
   socket.on("leave-room", () => {
@@ -118,6 +275,8 @@ io.on("connection", (socket) => {
     console.log(`Disconnected: ${socket.id}`);
     waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);
     leaveCurrentRoom(socket);
+    chatMessageTimestamps.delete(socket.id);
+    lastFindMatchAt.delete(socket.id);
   });
 });
 
@@ -132,5 +291,5 @@ function leaveCurrentRoom(socket) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`BukSU Chat server running on port ${PORT}`);
+  console.log(`Ka-Buksuan server running on port ${PORT}`);
 });
