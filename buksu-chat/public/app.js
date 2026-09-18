@@ -187,6 +187,11 @@ async function handleSession(session) {
   loginScreen.style.display = "none";
   appScreen.style.display = "flex";
 
+  showAlert(
+    "Be respectful. Harassment, hate speech, threats, or violent language are not tolerated. If you encounter this kind of behavior, please use the Report button — the offending user will be banned.",
+    "Community Guidelines"
+  );
+
   initSocket();
 }
 
