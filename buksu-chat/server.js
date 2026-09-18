@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -9,44 +11,91 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+// Serve the Supabase config from env vars instead of committing the key to source.
+app.get("/supabase-config.js", (_req, res) => {
+  res.type("application/javascript").send(
+    `const SUPABASE_URL = ${JSON.stringify(process.env.SUPABASE_URL || "")};\n` +
+    `const SUPABASE_ANON_KEY = ${JSON.stringify(process.env.SUPABASE_ANON_KEY || "")};\n` +
+    `const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);\n`
+  );
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
-// In-memory waiting queue. Holds socket IDs waiting for a match.
+const COLLEGES = ["COT", "CAS", "COE", "COB", "COL", "CON"];
+
+// In-memory waiting queue. Holds { socketId, college, course, matchSameCollege }.
 let waitingQueue = [];
 
 // Tracks which room each socket currently belongs to.
 const socketRooms = new Map();
 
+// Two waiting students are compatible only if each side's "same college"
+// preference (if set) is satisfied by the other side's college.
+function isCompatible(a, b) {
+  if (a.matchSameCollege && a.college !== b.college) return false;
+  if (b.matchSameCollege && b.college !== a.college) return false;
+  return true;
+}
+
 io.on("connection", (socket) => {
   console.log(`Connected: ${socket.id}`);
 
-  socket.on("find-match", () => {
-    // Remove this socket from the queue first in case of a stale entry.
-    waitingQueue = waitingQueue.filter((id) => id !== socket.id);
+  socket.on("find-match", (payload = {}) => {
+    const college = typeof payload.college === "string" ? payload.college.trim() : "";
+    const course = typeof payload.course === "string" ? payload.course.trim().slice(0, 40) : "";
+    const matchSameCollege = !!payload.matchSameCollege;
 
-    if (waitingQueue.length > 0) {
-      // Pair with the first waiting socket.
-      const partnerId = waitingQueue.shift();
-      const partnerSocket = io.sockets.sockets.get(partnerId);
+    if (!COLLEGES.includes(college)) return;
+
+    const profile = { college, course, matchSameCollege };
+
+    // Remove any stale entry for this socket first (e.g. re-clicking Find Match).
+    waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);
+
+    let matchIndex = -1;
+    for (let i = 0; i < waitingQueue.length; i++) {
+      const entry = waitingQueue[i];
+      const partnerSocket = io.sockets.sockets.get(entry.socketId);
 
       if (!partnerSocket) {
-        // Partner disconnected before pairing; requeue this socket.
-        waitingQueue.push(socket.id);
-        return;
+        // Partner disconnected without cleanup; drop the stale entry and keep scanning.
+        waitingQueue.splice(i, 1);
+        i--;
+        continue;
       }
 
-      const roomId = `room-${socket.id}-${partnerId}`;
+      if (isCompatible(profile, entry)) {
+        matchIndex = i;
+        break;
+      }
+    }
+
+    if (matchIndex !== -1) {
+      const [entry] = waitingQueue.splice(matchIndex, 1);
+      const partnerSocket = io.sockets.sockets.get(entry.socketId);
+
+      const roomId = `room-${socket.id}-${entry.socketId}`;
       socket.join(roomId);
       partnerSocket.join(roomId);
 
       socketRooms.set(socket.id, roomId);
-      socketRooms.set(partnerId, roomId);
+      socketRooms.set(entry.socketId, roomId);
 
-      // Tell one side to be the WebRTC offer initiator.
-      socket.emit("match-found", { roomId, initiator: true });
-      partnerSocket.emit("match-found", { roomId, initiator: false });
+      // Tell one side to be the WebRTC offer initiator, and hand each side
+      // the other's college/course so the UI can show a match badge.
+      socket.emit("match-found", {
+        roomId,
+        initiator: true,
+        partner: { college: entry.college, course: entry.course }
+      });
+      partnerSocket.emit("match-found", {
+        roomId,
+        initiator: false,
+        partner: { college: profile.college, course: profile.course }
+      });
     } else {
-      waitingQueue.push(socket.id);
+      waitingQueue.push({ socketId: socket.id, ...profile });
       socket.emit("waiting");
     }
   });
@@ -67,7 +116,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`Disconnected: ${socket.id}`);
-    waitingQueue = waitingQueue.filter((id) => id !== socket.id);
+    waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);
     leaveCurrentRoom(socket);
   });
 });

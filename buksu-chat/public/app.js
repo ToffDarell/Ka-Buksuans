@@ -1,3 +1,21 @@
+// ---------- Theme toggle ----------
+const themeToggle = document.getElementById("theme-toggle");
+
+themeToggle.addEventListener("click", () => {
+  const isLight = document.documentElement.getAttribute("data-theme") === "light";
+  const next = isLight ? "dark" : "light";
+
+  if (next === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+
+  try {
+    localStorage.setItem("buksu-theme", next);
+  } catch (err) {}
+});
+
 // ---------- DOM references ----------
 const loginScreen = document.getElementById("login-screen");
 const appScreen = document.getElementById("app-screen");
@@ -5,9 +23,20 @@ const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 
+const lobbyPanel = document.getElementById("lobby-panel");
+const collegeSelect = document.getElementById("college-select");
+const courseInput = document.getElementById("course-input");
+const sameCollegeCheckbox = document.getElementById("same-college-checkbox");
+
 const localVideo = document.getElementById("local-video");
 const remoteVideo = document.getElementById("remote-video");
 const statusText = document.getElementById("status-text");
+const statusBar = document.getElementById("status-bar");
+const localPlaceholder = document.getElementById("local-placeholder");
+const remotePlaceholder = document.getElementById("remote-placeholder");
+const remotePlaceholderText = document.getElementById("remote-placeholder-text");
+const localBadge = document.getElementById("local-badge");
+const remoteBadge = document.getElementById("remote-badge");
 
 const findBtn = document.getElementById("find-btn");
 const nextBtn = document.getElementById("next-btn");
@@ -25,6 +54,7 @@ let localStream = null;
 let peerConnection = null;
 let currentRoomId = null;
 let isInitiator = false;
+let currentProfile = null;
 
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -51,16 +81,18 @@ logoutBtn.addEventListener("click", async () => {
   location.reload();
 });
 
-async function checkSession() {
-  const { data: { session } } = await supabaseClient.auth.getSession();
+function handleSession(session) {
   if (!session) return;
 
   const email = session.user.email;
-  if (!email.endsWith("@buksu.edu.ph")) {
-    alert("Only BukSU emails are allowed.");
-    await supabaseClient.auth.signOut();
+  if (!email.endsWith("@student.buksu.edu.ph")) {
+    alert("Only BukSU student emails are allowed.");
+    supabaseClient.auth.signOut();
     return;
   }
+
+  // Avoid re-initializing the socket if we already logged in this session.
+  if (currentUser) return;
 
   currentUser = session.user;
   userEmailEl.textContent = email;
@@ -70,20 +102,31 @@ async function checkSession() {
   initSocket();
 }
 
-checkSession();
+// Fires on initial load AND right after Supabase parses the redirect token.
+supabaseClient.auth.onAuthStateChange((_event, session) => {
+  handleSession(session);
+});
+
+// Also check immediately in case a session already exists (e.g. page refresh).
+supabaseClient.auth.getSession().then(({ data: { session } }) => {
+  handleSession(session);
+});
 
 // ---------- Socket.io setup ----------
 function initSocket() {
   socket = io();
 
   socket.on("waiting", () => {
-    statusText.textContent = "Searching for a match...";
+    setStatus("waiting", "Searching for a match...");
+    remotePlaceholderText.textContent = "Searching for a match...";
   });
 
-  socket.on("match-found", async ({ roomId, initiator }) => {
+  socket.on("match-found", async ({ roomId, initiator, partner }) => {
     currentRoomId = roomId;
     isInitiator = initiator;
-    statusText.textContent = "Matched! Connecting...";
+    setStatus("waiting", "Matched! Connecting...");
+    remotePlaceholderText.textContent = "Connecting...";
+    if (partner) showBadge(remoteBadge, partner.college, partner.course);
     toggleControls(true);
     await startPeerConnection();
   });
@@ -97,33 +140,71 @@ function initSocket() {
   });
 
   socket.on("partner-left", () => {
-    statusText.textContent = "Stranger disconnected.";
+    setStatus("ended", "Stranger disconnected.");
     appendSystemMessage("Stranger has disconnected.");
     cleanupCall();
   });
 }
 
+function setStatus(state, text) {
+  statusText.textContent = text;
+  statusBar.classList.remove("state-waiting", "state-connected", "state-ended");
+  if (state) statusBar.classList.add(`state-${state}`);
+}
+
+function showBadge(el, college, course) {
+  el.textContent = course ? `${college} • ${course}` : college;
+  el.hidden = false;
+}
+
+function hideBadge(el) {
+  el.hidden = true;
+  el.textContent = "";
+}
+
+// ---------- Match setup (lobby) ----------
+collegeSelect.addEventListener("change", () => {
+  findBtn.disabled = !collegeSelect.value;
+});
+
 // ---------- Matchmaking controls ----------
 findBtn.addEventListener("click", async () => {
-  await getLocalMedia();
-  socket.emit("find-match");
-  findBtn.style.display = "none";
+  const college = collegeSelect.value;
+  if (!college) return;
+
+  const course = courseInput.value.trim();
+  const matchSameCollege = sameCollegeCheckbox.checked;
+
+  findBtn.disabled = true;
+  try {
+    await getLocalMedia();
+  } catch (err) {
+    // Camera/mic is optional — text chat works over the socket connection
+    // regardless, so a missing/blocked camera should never block matching.
+    console.error("Camera/mic error:", err);
+  }
+
+  currentProfile = { college, course, matchSameCollege };
+  showBadge(localBadge, college, course);
+
+  socket.emit("find-match", currentProfile);
+  lobbyPanel.style.display = "none";
+  appScreen.classList.add("in-call");
   stopBtn.style.display = "inline-block";
 });
 
 nextBtn.addEventListener("click", async () => {
   socket.emit("leave-room");
   cleanupPeerOnly();
-  statusText.textContent = "Searching for a match...";
-  socket.emit("find-match");
+  setStatus("waiting", "Searching for a match...");
+  remotePlaceholderText.textContent = "Searching for a match...";
+  socket.emit("find-match", currentProfile);
 });
 
 stopBtn.addEventListener("click", () => {
   socket.emit("leave-room");
   cleanupCall();
-  statusText.textContent = "Not connected";
-  findBtn.style.display = "inline-block";
-  stopBtn.style.display = "none";
+  setStatus(null, "Not connected");
 });
 
 reportBtn.addEventListener("click", async () => {
@@ -160,18 +241,22 @@ async function getLocalMedia() {
     audio: true
   });
   localVideo.srcObject = localStream;
+  localPlaceholder.classList.add("hidden");
 }
 
 async function startPeerConnection() {
   peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-  localStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, localStream);
-  });
+  if (localStream) {
+    localStream.getTracks().forEach((track) => {
+      peerConnection.addTrack(track, localStream);
+    });
+  }
 
   peerConnection.ontrack = (event) => {
     remoteVideo.srcObject = event.streams[0];
-    statusText.textContent = "Connected";
+    remotePlaceholder.classList.add("hidden");
+    setStatus("connected", "Connected");
   };
 
   peerConnection.onicecandidate = (event) => {
@@ -222,6 +307,8 @@ function cleanupPeerOnly() {
     peerConnection = null;
   }
   remoteVideo.srcObject = null;
+  remotePlaceholder.classList.remove("hidden");
+  hideBadge(remoteBadge);
   chatBox.innerHTML = "";
 }
 
@@ -232,10 +319,15 @@ function cleanupCall() {
     localStream = null;
   }
   localVideo.srcObject = null;
+  localPlaceholder.classList.remove("hidden");
+  hideBadge(localBadge);
+  remotePlaceholderText.textContent = "Not connected yet";
   currentRoomId = null;
   toggleControls(false);
-  findBtn.style.display = "inline-block";
   stopBtn.style.display = "none";
+  lobbyPanel.style.display = "flex";
+  appScreen.classList.remove("in-call");
+  findBtn.disabled = !collegeSelect.value;
 }
 
 // ---------- Chat ----------
@@ -255,15 +347,15 @@ function sendChatMessage() {
 
 function appendChatMessage(sender, message) {
   const p = document.createElement("p");
-  p.textContent = `${sender}: ${message}`;
+  p.className = sender === "You" ? "msg-you" : "msg-stranger";
+  p.textContent = message;
   chatBox.appendChild(p);
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
 function appendSystemMessage(message) {
   const p = document.createElement("p");
-  p.style.opacity = "0.7";
-  p.style.fontStyle = "italic";
+  p.className = "msg-system";
   p.textContent = message;
   chatBox.appendChild(p);
   chatBox.scrollTop = chatBox.scrollHeight;

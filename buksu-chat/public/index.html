@@ -2,45 +2,132 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>BukSU Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Stencil:wght@600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Applied before first paint so there's no flash of the wrong theme.
+    (function () {
+      try {
+        if (localStorage.getItem("buksu-theme") === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      } catch (err) {}
+    })();
+  </script>
 </head>
 <body>
 
+  <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light mode">
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
+
+  <div class="bunting" aria-hidden="true"></div>
+
   <div id="login-screen" class="screen">
-    <h1>BukSU Chat</h1>
-    <p>Random video &amp; text chat, exclusive to BukSU students.</p>
-    <button id="login-btn">Login with BukSU Email</button>
+    <div class="login-card">
+      <div class="patch">
+        <svg class="patch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/></svg>
+      </div>
+      <h1 class="wordmark">BukSU Chat</h1>
+      <p class="tagline">Student Network &middot; Random Video Chat</p>
+      <p class="blurb">Meet a random BukSU student for a live video &amp; text chat. Exclusive to verified student emails.</p>
+      <button id="login-btn" class="btn-pennant">Login with BukSU Email</button>
+    </div>
   </div>
 
   <div id="app-screen" class="screen" style="display:none;">
     <header>
-      <span id="user-email"></span>
-      <button id="logout-btn">Logout</button>
+      <span class="brand">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/></svg>
+        <span class="brand-word">BukSU Chat</span>
+      </span>
+      <div class="header-right">
+        <span id="user-email"></span>
+        <button id="logout-btn" class="btn-patch">Logout</button>
+      </div>
     </header>
 
+    <div id="lobby-panel" class="roster-card">
+      <h2 class="roster-title">Match Setup</h2>
+
+      <div class="field">
+        <label for="college-select">Your College</label>
+        <select id="college-select" required>
+          <option value="" disabled selected>Select your college&hellip;</option>
+          <option value="COT">College of Technologies (COT)</option>
+          <option value="CAS">College of Arts and Sciences (CAS)</option>
+          <option value="COE">College of Education (COE)</option>
+          <option value="COB">College of Business (COB)</option>
+          <option value="COL">College of Law (COL)</option>
+          <option value="CON">College of Nursing (CON)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="course-input">Course / Major <span class="optional-tag">optional</span></label>
+        <input id="course-input" type="text" placeholder="e.g. BSIT, BSCS, BSED" maxlength="40" list="course-suggestions">
+        <datalist id="course-suggestions">
+          <option value="BSIT"></option>
+          <option value="BSCS"></option>
+          <option value="BSED"></option>
+          <option value="BSBA"></option>
+          <option value="BSN"></option>
+          <option value="BSCRIM"></option>
+        </datalist>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="same-college-checkbox">
+        <span>Match me only with students from my college</span>
+      </label>
+
+      <button id="find-btn" class="btn-pennant" disabled>Find Match</button>
+    </div>
+
     <div id="video-container">
-      <video id="local-video" autoplay muted playsinline></video>
-      <video id="remote-video" autoplay playsinline></video>
+      <div class="video-tile">
+        <video id="local-video" autoplay muted playsinline></video>
+        <span class="tile-label">You</span>
+        <span class="college-badge" id="local-badge" hidden></span>
+        <div class="video-placeholder" id="local-placeholder">
+          <div class="avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/></svg>
+          </div>
+          <span>Camera off</span>
+        </div>
+      </div>
+      <div class="video-tile">
+        <video id="remote-video" autoplay playsinline></video>
+        <span class="tile-label">Stranger</span>
+        <span class="college-badge" id="remote-badge" hidden></span>
+        <div class="video-placeholder" id="remote-placeholder">
+          <div class="spinner"></div>
+          <span id="remote-placeholder-text">Not connected yet</span>
+        </div>
+      </div>
     </div>
 
     <div id="status-bar">
+      <span class="dot"></span>
       <span id="status-text">Not connected</span>
     </div>
 
     <div id="controls">
-      <button id="find-btn">Find Match</button>
-      <button id="next-btn" style="display:none;">Next</button>
-      <button id="stop-btn" style="display:none;">Stop</button>
-      <button id="report-btn" style="display:none;">Report</button>
+      <button id="next-btn" class="btn-patch" style="display:none;">Next</button>
+      <button id="stop-btn" class="btn-patch" style="display:none;">Stop</button>
+      <button id="report-btn" class="btn-report" style="display:none;">Report</button>
     </div>
 
     <div id="chat-container">
       <div id="chat-box"></div>
       <div id="chat-input-row">
         <input id="chat-input" placeholder="Type a message..." disabled>
-        <button id="send-btn" disabled>Send</button>
+        <button id="send-btn" disabled class="btn-pennant btn-small">Send</button>
       </div>
     </div>
   </div>
