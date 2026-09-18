@@ -127,12 +127,36 @@ const ICE_SERVERS = [
 ];
 
 // ---------- Auth ----------
+
+// Google/Supabase report OAuth failures (e.g. an account Google itself
+// rejects) by redirecting back with error params in the URL instead of
+// throwing in JS — without this check that comes back completely silent.
+(function checkOAuthRedirectError() {
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const searchParams = new URLSearchParams(window.location.search);
+  const rawError =
+    hashParams.get("error_description") ||
+    searchParams.get("error_description") ||
+    hashParams.get("error") ||
+    searchParams.get("error");
+
+  if (!rawError) return;
+
+  const message = decodeURIComponent(rawError.replace(/\+/g, " "));
+  showAlert(message, "Login failed");
+  // Strip the error out of the URL so refreshing doesn't re-trigger the alert.
+  history.replaceState(null, "", window.location.pathname);
+})();
+
 loginBtn.addEventListener("click", async () => {
   const { error } = await supabaseClient.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin }
   });
-  if (error) console.error("Login error:", error.message);
+  if (error) {
+    console.error("Login error:", error.message);
+    showAlert(error.message, "Login failed");
+  }
 });
 
 logoutBtn.addEventListener("click", async () => {
