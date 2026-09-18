@@ -169,12 +169,12 @@ logoutBtn.addEventListener("click", async () => {
   location.reload();
 });
 
-function handleSession(session) {
+async function handleSession(session) {
   if (!session) return;
 
   const email = session.user.email;
   if (!email.endsWith("@student.buksu.edu.ph")) {
-    showAlert("Only BukSU student emails are allowed.", "Access restricted");
+    await showAlert("Only BukSU student emails are allowed.", "Access restricted");
     supabaseClient.auth.signOut();
     return;
   }
@@ -213,13 +213,13 @@ function initSocket() {
     }
   });
 
-  socket.on("connect_error", (err) => {
+  socket.on("connect_error", async (err) => {
     console.error("Socket connection rejected:", err.message);
 
     if (err.message === "Your account has been banned") {
-      showAlert("Your account has been banned from Ka-Buksuan.", "Access denied");
+      await showAlert("Your account has been banned from Ka-Buksuan.", "Access denied");
     } else {
-      showAlert("Your session could not be verified. Please log in again.", "Connection error");
+      await showAlert("Your session could not be verified. Please log in again.", "Connection error");
     }
 
     supabaseClient.auth.signOut();
