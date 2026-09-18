@@ -215,7 +215,13 @@ function initSocket() {
 
   socket.on("connect_error", (err) => {
     console.error("Socket connection rejected:", err.message);
-    showAlert("Your session could not be verified. Please log in again.", "Connection error");
+
+    if (err.message === "Your account has been banned") {
+      showAlert("Your account has been banned from Ka-Buksuan.", "Access denied");
+    } else {
+      showAlert("Your session could not be verified. Please log in again.", "Connection error");
+    }
+
     supabaseClient.auth.signOut();
     location.reload();
   });

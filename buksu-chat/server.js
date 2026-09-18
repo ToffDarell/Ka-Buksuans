@@ -52,6 +52,20 @@ io.use(async (socket, next) => {
     return next(new Error("Only BukSU student emails are allowed"));
   }
 
+  // Fail open on infrastructure errors (a Supabase hiccup shouldn't lock
+  // everyone out) — only an explicit is_banned = true blocks the connection.
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select("is_banned")
+    .eq("id", data.user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("Profile lookup error:", profileError.message);
+  } else if (profile?.is_banned) {
+    return next(new Error("Your account has been banned"));
+  }
+
   socket.data.user = { id: data.user.id, email };
   next();
 });
