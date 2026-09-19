@@ -1,19 +1,20 @@
 // ---------- Theme toggle ----------
-const themeToggle = document.getElementById("theme-toggle");
+// One toggle on the login screen and one in the app header.
+document.querySelectorAll(".theme-toggle").forEach((toggle) => {
+  toggle.addEventListener("click", () => {
+    const isLight = document.documentElement.getAttribute("data-theme") === "light";
+    const next = isLight ? "dark" : "light";
 
-themeToggle.addEventListener("click", () => {
-  const isLight = document.documentElement.getAttribute("data-theme") === "light";
-  const next = isLight ? "dark" : "light";
+    if (next === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
 
-  if (next === "light") {
-    document.documentElement.setAttribute("data-theme", "light");
-  } else {
-    document.documentElement.removeAttribute("data-theme");
-  }
-
-  try {
-    localStorage.setItem("buksu-theme", next);
-  } catch (err) {}
+    try {
+      localStorage.setItem("buksu-theme", next);
+    } catch (err) {}
+  });
 });
 
 // ---------- Custom modal (native <dialog>; replaces native alert/prompt) ----------
@@ -98,6 +99,7 @@ const remotePlaceholderText = document.getElementById("remote-placeholder-text")
 const localBadge = document.getElementById("local-badge");
 const videoContainer = document.getElementById("video-container");
 const remoteBadge = document.getElementById("remote-badge");
+const tapToPlayBtn = document.getElementById("tap-to-play-btn");
 
 const findBtn = document.getElementById("find-btn");
 const nextBtn = document.getElementById("next-btn");
@@ -108,6 +110,10 @@ const chatBox = document.getElementById("chat-box");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
 
+// Shown once on sign-in and as the first line of every chat.
+const COMMUNITY_GUIDELINES =
+  "Be respectful. Harassment, hate speech, threats, or violent language are not tolerated. If you encounter this kind of behavior, please use the Report button so the offending user will be banned.";
+
 // ---------- State ----------
 let currentUser = null;
 let socket = null;
@@ -117,14 +123,38 @@ let currentRoomId = null;
 let isInitiator = false;
 let currentProfile = null;
 
+// WebRTC session state (reset for every new peer connection).
+let pendingRemoteCandidates = [];
+let remoteFallbackStream = null;
+let iceRestartAttempts = 0;
+let connStatus = null;
+let disconnectTimer = null;
+let connectTimer = null;
+let signalQueue = Promise.resolve();
+
+const MAX_ICE_RESTARTS = 3;
+const CONNECT_TIMEOUT_MS = 15000;
+
+// Mobile carrier NATs often block one transport but not another, so offer the
+// relay over UDP, TCP, and TLS on both ports 80 and 443.
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   {
-    urls: "turn:openrelay.metered.ca:80",
+    urls: [
+      "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:80?transport=tcp",
+      "turn:openrelay.metered.ca:443",
+      "turn:openrelay.metered.ca:443?transport=tcp",
+      "turns:openrelay.metered.ca:443?transport=tcp"
+    ],
     username: "openrelayproject",
     credential: "openrelayproject"
   }
 ];
+
+// Debug aid: open the site with ?relay=1 to force every call through TURN.
+// If that works, TURN is fine; if only ?relay=1 fails, the relay is the problem.
+const FORCE_RELAY = new URLSearchParams(window.location.search).has("relay");
 
 // ---------- Auth ----------
 
@@ -187,10 +217,7 @@ async function handleSession(session) {
   loginScreen.style.display = "none";
   appScreen.style.display = "flex";
 
-  showAlert(
-    "Be respectful. Harassment, hate speech, threats, or violent language are not tolerated. If you encounter this kind of behavior, please use the Report button — the offending user will be banned.",
-    "Community Guidelines"
-  );
+  showAlert(COMMUNITY_GUIDELINES, "Community Guidelines");
 
   initSocket();
 }
@@ -265,8 +292,12 @@ function initSocket() {
     }
   });
 
-  socket.on("signal", async (data) => {
-    await handleSignal(data);
+  // Signals are processed strictly one at a time: an ICE candidate must never
+  // be applied while the offer/answer before it is still being set.
+  socket.on("signal", (data) => {
+    signalQueue = signalQueue
+      .then(() => handleSignal(data))
+      .catch((err) => console.error("[RTC] Signal handling error:", err));
   });
 
   socket.on("chat-message", (message) => {
@@ -338,6 +369,67 @@ collegeSelect.addEventListener("change", () => {
   findBtn.disabled = !collegeSelect.value;
 });
 
+// The hidden <select> stays the source of truth (value + option list). Each
+// option becomes a destination row: native radios, so arrow keys and screen
+// readers work without extra code.
+const collegeList = document.getElementById("college-list");
+const ARROW_PATH = "M2 9.5h12V4l8 8-8 8v-5.5H2z";
+
+Array.from(collegeSelect.options)
+  .filter((opt) => opt.value)
+  .forEach((opt) => {
+    const label = document.createElement("label");
+    label.className = "dest";
+
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "college";
+    input.value = opt.value;
+    input.checked = collegeSelect.value === opt.value;
+    input.addEventListener("change", () => {
+      collegeSelect.value = input.value;
+      collegeSelect.dispatchEvent(new Event("change"));
+    });
+
+    const code = document.createElement("span");
+    code.className = "dest-code";
+    code.textContent = opt.value;
+
+    const name = document.createElement("span");
+    name.className = "dest-name";
+    name.textContent = COLLEGE_NAMES[opt.value] || opt.textContent;
+
+    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    arrow.setAttribute("viewBox", "0 0 24 24");
+    arrow.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", ARROW_PATH);
+    arrow.appendChild(path);
+
+    label.append(input, code, name, arrow);
+    collegeList.appendChild(label);
+  });
+
+// One-line summary of the setup, shown while the lobby is folded away.
+const sessionStrip = document.getElementById("session-strip");
+
+function showSessionStrip(profile) {
+  const parts = [COLLEGE_NAMES[profile.college] || profile.college];
+  if (profile.course) parts.push(profile.course);
+  parts.push(profile.mode === "text" ? "Text Only" : "Video + Text");
+
+  const code = document.createElement("span");
+  code.className = "strip-code";
+  code.textContent = profile.college;
+
+  const text = document.createElement("span");
+  text.className = "strip-text";
+  text.textContent = parts.join(" · ");
+
+  sessionStrip.replaceChildren(code, text);
+  sessionStrip.hidden = false;
+}
+
 // ---------- Matchmaking controls ----------
 findBtn.addEventListener("click", async () => {
   const college = collegeSelect.value;
@@ -355,7 +447,7 @@ findBtn.addEventListener("click", async () => {
     } catch (err) {
       // Camera/mic is optional — text chat works over the socket connection
       // regardless, so a missing/blocked camera should never block matching.
-      console.error("Camera/mic error:", err);
+      console.error("[RTC] Camera/mic error:", err.name, "-", err.message);
     }
     videoContainer.style.display = "flex";
   } else {
@@ -364,11 +456,13 @@ findBtn.addEventListener("click", async () => {
 
   currentProfile = { college, course, matchSameCollege, mode };
   showBadge(localBadge, college, course);
+  showSessionStrip(currentProfile);
 
   socket.emit("find-match", currentProfile);
   lobbyPanel.style.display = "none";
   appScreen.classList.add("in-call");
-  stopBtn.style.display = "inline-block";
+  appScreen.classList.toggle("text-only", mode !== "video");
+  stopBtn.style.display = "";
 });
 
 nextBtn.addEventListener("click", async () => {
@@ -403,8 +497,8 @@ reportBtn.addEventListener("click", async () => {
 });
 
 function toggleControls(inCall) {
-  nextBtn.style.display = inCall ? "inline-block" : "none";
-  reportBtn.style.display = inCall ? "inline-block" : "none";
+  nextBtn.style.display = inCall ? "" : "none";
+  reportBtn.style.display = inCall ? "" : "none";
   chatInput.disabled = !inCall;
   sendBtn.disabled = !inCall;
 }
@@ -412,80 +506,418 @@ function toggleControls(inCall) {
 // ---------- WebRTC ----------
 async function getLocalMedia() {
   if (localStream) return;
+
+  console.log("[RTC] Secure context (HTTPS):", window.isSecureContext);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error("Camera/mic need a secure (HTTPS) page in a supported browser");
+  }
+
+  // Only "ideal" constraints — iOS Safari rejects "exact" ones it can't meet,
+  // and 640x480 keeps mobile-data bitrates realistic.
   localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true
+    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: { echoCancellation: true, noiseSuppression: true }
   });
+  console.log(
+    "[RTC] Local media ready:",
+    localStream.getTracks().map((t) => `${t.kind}:${t.readyState}`).join(", ")
+  );
+
   localVideo.srcObject = localStream;
+  localVideo.play().catch((err) => console.warn("[RTC] localVideo.play() rejected:", err.name));
   localPlaceholder.classList.add("hidden");
 }
 
-async function startPeerConnection() {
-  peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+function candidateType(candidate) {
+  if (candidate.type) return candidate.type;
+  const match = / typ (\w+)/.exec(candidate.candidate || "");
+  return match ? match[1] : "unknown";
+}
 
-  if (localStream) {
-    localStream.getTracks().forEach((track) => {
-      peerConnection.addTrack(track, localStream);
+function playRemoteVideo() {
+  const playPromise = remoteVideo.play();
+  if (playPromise === undefined) return;
+
+  playPromise
+    .then(() => console.log("[RTC] remoteVideo.play() resolved"))
+    .catch((err) => {
+      console.warn("[RTC] remoteVideo.play() rejected:", err.name, "-", err.message);
+      // iOS Safari / mobile Chrome block unmuted autoplay until a user gesture.
+      if (err.name === "NotAllowedError") {
+        remotePlaceholderText.textContent = "Video is ready — tap to start";
+        tapToPlayBtn.hidden = false;
+      }
     });
-  }
+}
 
-  peerConnection.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
+tapToPlayBtn.addEventListener("click", () => {
+  remoteVideo.muted = false;
+  remoteVideo.play()
+    .then(() => {
+      console.log("[RTC] remoteVideo.play() resolved after tap");
+      tapToPlayBtn.hidden = true;
+    })
+    .catch((err) => console.error("[RTC] remoteVideo.play() failed after tap:", err.name, "-", err.message));
+});
+
+remoteVideo.addEventListener("loadedmetadata", () => {
+  console.log(`[RTC] remoteVideo metadata loaded (${remoteVideo.videoWidth}x${remoteVideo.videoHeight})`);
+});
+
+// Chrome starts "playing" a 2x2 black frame as soon as a remote track is
+// announced, long before any media flows — so the placeholder may only go away
+// once the connection is really up AND real video frames are on screen.
+function updateRemotePlaceholder() {
+  const hasRealVideo = remoteVideo.videoWidth > 2 && !remoteVideo.paused;
+  if (connStatus === "connected" && hasRealVideo) {
     remotePlaceholder.classList.add("hidden");
-    setStatus("connected", "Connected");
-  };
+  }
+}
 
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("signal", {
-        roomId: currentRoomId,
-        data: { candidate: event.candidate }
+remoteVideo.addEventListener("playing", () => {
+  console.log(`[RTC] remoteVideo is playing (${remoteVideo.videoWidth}x${remoteVideo.videoHeight}, muted=${remoteVideo.muted})`);
+  tapToPlayBtn.hidden = true;
+  updateRemotePlaceholder();
+});
+
+remoteVideo.addEventListener("resize", () => {
+  console.log(`[RTC] remoteVideo size changed to ${remoteVideo.videoWidth}x${remoteVideo.videoHeight}`);
+  updateRemotePlaceholder();
+});
+
+async function logSelectedCandidatePair(pc) {
+  try {
+    const stats = await pc.getStats();
+    let pair = null;
+
+    stats.forEach((report) => {
+      if (report.type === "transport" && report.selectedCandidatePairId) {
+        pair = stats.get(report.selectedCandidatePairId);
+      }
+    });
+    if (!pair) {
+      stats.forEach((report) => {
+        if (report.type === "candidate-pair" && report.nominated && report.state === "succeeded") pair = report;
       });
     }
+    if (!pair) {
+      console.warn("[RTC] No selected candidate pair found");
+      return;
+    }
+
+    const local = stats.get(pair.localCandidateId);
+    const remote = stats.get(pair.remoteCandidateId);
+    console.log(
+      `[RTC] Selected path — local: ${local ? `${local.candidateType}/${local.protocol}` : "?"}, ` +
+      `remote: ${remote ? `${remote.candidateType}/${remote.protocol}` : "?"}`
+    );
+  } catch (err) {
+    console.warn("[RTC] getStats (candidate pair) failed:", err.message);
+  }
+}
+
+async function logMediaFlow(pc) {
+  if (pc !== peerConnection) return;
+  try {
+    const stats = await pc.getStats();
+    stats.forEach((report) => {
+      if (report.type === "inbound-rtp") {
+        console.log(
+          `[RTC] Inbound ${report.kind}: ${report.bytesReceived || 0} bytes, ${report.packetsReceived || 0} packets` +
+          (report.framesDecoded !== undefined ? `, ${report.framesDecoded} frames decoded` : "")
+        );
+      }
+    });
+  } catch (err) {
+    console.warn("[RTC] getStats (media flow) failed:", err.message);
+  }
+}
+
+async function restartIceAsInitiator(pc) {
+  if (pc !== peerConnection || !isInitiator) return;
+  if (pc.signalingState !== "stable") {
+    console.log("[RTC] Skipping ICE restart — negotiation already in progress");
+    return;
+  }
+
+  try {
+    const offer = await pc.createOffer({ iceRestart: true });
+    await pc.setLocalDescription(offer);
+    socket.emit("signal", { roomId: currentRoomId, data: { sdp: pc.localDescription } });
+    console.log("[RTC] Sent ICE-restart offer");
+  } catch (err) {
+    console.error("[RTC] ICE restart failed:", err);
+  }
+}
+
+// ICE can sit in "new"/"checking" forever without ever reporting "failed"
+// (e.g. no usable candidates at all), which would leave the user on a black
+// screen. This watchdog turns that silence into the normal restart/retry path.
+function armConnectTimer(pc) {
+  clearTimeout(connectTimer);
+  connectTimer = setTimeout(() => {
+    if (pc !== peerConnection || connStatus === "connected") return;
+    console.warn(
+      `[RTC] Not connected after ${CONNECT_TIMEOUT_MS / 1000}s ` +
+      `(ice: ${pc.iceConnectionState}, connection: ${pc.connectionState || "n/a"})`
+    );
+    setStatus("waiting", "Still connecting — retrying...");
+    recoverConnection(pc, "connect timeout");
+  }, CONNECT_TIMEOUT_MS);
+}
+
+function recoverConnection(pc, reason) {
+  if (pc !== peerConnection) return;
+
+  if (iceRestartAttempts >= MAX_ICE_RESTARTS) {
+    console.error(`[RTC] Giving up after ${MAX_ICE_RESTARTS} ICE restarts (${reason})`);
+    clearTimeout(connectTimer);
+    setStatus("ended", "Connection failed. Try Next, or use Text Only mode.");
+    remotePlaceholderText.textContent = "Couldn't connect";
+    remotePlaceholder.classList.remove("hidden");
+    return;
+  }
+
+  iceRestartAttempts += 1;
+  console.warn(`[RTC] ICE restart ${iceRestartAttempts}/${MAX_ICE_RESTARTS} (${reason})`);
+  armConnectTimer(pc);
+
+  if (isInitiator) {
+    restartIceAsInitiator(pc);
+  } else {
+    // Only the initiator makes offers, so ask it to restart.
+    socket.emit("signal", { roomId: currentRoomId, data: { restart: true } });
+  }
+}
+
+// Maps the real ICE/connection state to the status bar — the UI must reflect
+// whether media can actually flow, not merely that the socket match happened.
+function syncConnectionStatus(pc) {
+  if (pc !== peerConnection) return;
+
+  const ice = pc.iceConnectionState;
+  const conn = pc.connectionState || "";
+  console.log(`[RTC] State — ice: ${ice}, connection: ${conn || "n/a"}, signaling: ${pc.signalingState}`);
+
+  let next;
+  if (conn === "failed" || ice === "failed") next = "failed";
+  else if (conn === "disconnected" || ice === "disconnected") next = "disconnected";
+  else if (conn === "connected" || (!conn && (ice === "connected" || ice === "completed"))) next = "connected";
+  else if (conn === "closed" || ice === "closed") return;
+  else next = "connecting";
+
+  if (next === connStatus) return;
+  connStatus = next;
+
+  clearTimeout(disconnectTimer);
+
+  if (next === "connected") {
+    clearTimeout(connectTimer);
+    iceRestartAttempts = 0;
+    setStatus("connected", "Connected");
+    remotePlaceholderText.textContent = "Connected — waiting for video...";
+    updateRemotePlaceholder();
+    logSelectedCandidatePair(pc);
+    setTimeout(() => logMediaFlow(pc), 3000);
+    setTimeout(() => {
+      if (pc === peerConnection && connStatus === "connected" && remoteVideo.videoWidth === 0) {
+        remotePlaceholderText.textContent = "Stranger's camera is off or unavailable";
+      }
+    }, 5000);
+  } else if (next === "connecting") {
+    setStatus("waiting", "Connecting...");
+    remotePlaceholderText.textContent = iceRestartAttempts ? "Reconnecting..." : "Connecting...";
+  } else if (next === "disconnected") {
+    setStatus("waiting", "Connection unstable — reconnecting...");
+    disconnectTimer = setTimeout(() => {
+      const stillDown = pc.iceConnectionState === "disconnected" || pc.connectionState === "disconnected";
+      if (stillDown) recoverConnection(pc, "disconnected for 5s");
+    }, 5000);
+  } else if (next === "failed") {
+    setStatus("ended", "Connection failed — trying to recover...");
+    remotePlaceholderText.textContent = "Connection failed — retrying...";
+    remotePlaceholder.classList.remove("hidden");
+    recoverConnection(pc, "failed");
+  }
+}
+
+async function startPeerConnection() {
+  const pc = new RTCPeerConnection({
+    iceServers: ICE_SERVERS,
+    iceTransportPolicy: FORCE_RELAY ? "relay" : "all"
+  });
+  peerConnection = pc;
+
+  pendingRemoteCandidates = [];
+  remoteFallbackStream = null;
+  iceRestartAttempts = 0;
+  connStatus = null;
+  clearTimeout(disconnectTimer);
+  armConnectTimer(pc);
+
+  console.log(
+    `[RTC] Peer connection created (initiator: ${isInitiator}, relay-only: ${FORCE_RELAY}, ` +
+    `local media: ${localStream ? "yes" : "NO"})`
+  );
+
+  if (localStream) {
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+  } else if (isInitiator) {
+    // Without any local track the offer would contain no media sections at
+    // all, and neither side would ever receive audio or video.
+    console.warn("[RTC] No local media — offering to receive audio/video only");
+    pc.addTransceiver("audio", { direction: "recvonly" });
+    pc.addTransceiver("video", { direction: "recvonly" });
+  }
+
+  pc.ontrack = (event) => {
+    console.log(
+      `[RTC] Remote ${event.track.kind} track received ` +
+      `(streams: ${event.streams.length}, readyState: ${event.track.readyState}, muted: ${event.track.muted})`
+    );
+
+    event.track.onunmute = () => console.log(`[RTC] Remote ${event.track.kind} track is receiving media`);
+    event.track.onmute = () => console.log(`[RTC] Remote ${event.track.kind} track stopped receiving media`);
+
+    let stream = event.streams[0];
+    if (!stream) {
+      remoteFallbackStream = remoteFallbackStream || new MediaStream();
+      remoteFallbackStream.addTrack(event.track);
+      stream = remoteFallbackStream;
+    }
+    if (remoteVideo.srcObject !== stream) remoteVideo.srcObject = stream;
+
+    playRemoteVideo();
+  };
+
+  const localCandidateCounts = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+
+  pc.onicecandidate = (event) => {
+    if (pc !== peerConnection) return;
+
+    if (!event.candidate) {
+      console.log("[RTC] ICE gathering complete — local candidates:", { ...localCandidateCounts });
+      if (!localCandidateCounts.relay) {
+        console.warn("[RTC] No relay (TURN) candidate was gathered — TURN is unreachable or rejected the credentials");
+      }
+      return;
+    }
+
+    const type = candidateType(event.candidate);
+    localCandidateCounts[type] = (localCandidateCounts[type] || 0) + 1;
+    console.log(`[RTC] Local ICE candidate: ${type} (${event.candidate.protocol || "?"})`);
+
+    socket.emit("signal", {
+      roomId: currentRoomId,
+      data: { candidate: event.candidate }
+    });
+  };
+
+  pc.onicecandidateerror = (event) => {
+    console.warn(`[RTC] ICE candidate error ${event.errorCode}: ${event.errorText || "(no text)"} — ${event.url || "no url"}`);
+  };
+
+  pc.onicegatheringstatechange = () => {
+    console.log("[RTC] ICE gathering state:", pc.iceGatheringState);
+  };
+
+  pc.onsignalingstatechange = () => {
+    console.log("[RTC] Signaling state:", pc.signalingState);
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log("[RTC] ICE connection state:", pc.iceConnectionState);
+    syncConnectionStatus(pc);
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log("[RTC] Connection state:", pc.connectionState);
+    syncConnectionStatus(pc);
   };
 
   if (isInitiator) {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
     socket.emit("signal", {
       roomId: currentRoomId,
-      data: { sdp: peerConnection.localDescription }
+      data: { sdp: pc.localDescription }
     });
+    console.log("[RTC] Sent offer");
+  }
+}
+
+async function addRemoteCandidate(pc, candidate) {
+  try {
+    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    console.log(`[RTC] Added remote ICE candidate: ${candidateType(candidate)}`);
+  } catch (err) {
+    console.error("[RTC] Failed to add remote ICE candidate:", err.message);
+  }
+}
+
+async function flushPendingCandidates(pc) {
+  const queued = pendingRemoteCandidates;
+  pendingRemoteCandidates = [];
+  if (queued.length) console.log(`[RTC] Applying ${queued.length} queued remote ICE candidate(s)`);
+
+  for (const candidate of queued) {
+    await addRemoteCandidate(pc, candidate);
   }
 }
 
 async function handleSignal(data) {
-  if (!peerConnection) return;
+  const pc = peerConnection;
+  if (!pc) return;
+
+  if (data.restart) {
+    console.log("[RTC] Partner asked for an ICE restart");
+    if (isInitiator) recoverConnection(pc, "requested by partner");
+    return;
+  }
 
   if (data.sdp) {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    console.log(`[RTC] Received ${data.sdp.type}`);
+    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    if (pc !== peerConnection) return;
+    await flushPendingCandidates(pc);
 
     if (data.sdp.type === "offer") {
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      if (pc !== peerConnection) return;
       socket.emit("signal", {
         roomId: currentRoomId,
-        data: { sdp: peerConnection.localDescription }
+        data: { sdp: pc.localDescription }
       });
+      console.log("[RTC] Sent answer");
     }
   } else if (data.candidate) {
-    try {
-      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-    } catch (err) {
-      console.error("ICE candidate error:", err);
+    // A candidate can arrive before its offer/answer has been applied; hold it
+    // until the remote description exists instead of dropping it.
+    if (!pc.remoteDescription) {
+      pendingRemoteCandidates.push(data.candidate);
+      return;
     }
+    await addRemoteCandidate(pc, data.candidate);
   }
 }
 
 function cleanupPeerOnly() {
+  clearTimeout(disconnectTimer);
+  clearTimeout(connectTimer);
+  pendingRemoteCandidates = [];
+  remoteFallbackStream = null;
+  connStatus = null;
+
   if (peerConnection) {
     peerConnection.close();
     peerConnection = null;
   }
   remoteVideo.srcObject = null;
+  tapToPlayBtn.hidden = true;
   remotePlaceholder.classList.remove("hidden");
   hideBadge(remoteBadge);
-  chatBox.innerHTML = "";
+  resetChat();
 }
 
 function cleanupCall() {
@@ -503,7 +935,8 @@ function cleanupCall() {
   stopBtn.style.display = "none";
   lobbyPanel.style.display = "flex";
   videoContainer.style.display = "flex";
-  appScreen.classList.remove("in-call");
+  appScreen.classList.remove("in-call", "text-only");
+  sessionStrip.hidden = true;
   findBtn.disabled = !collegeSelect.value;
 }
 
@@ -537,3 +970,13 @@ function appendSystemMessage(message) {
   chatBox.appendChild(p);
   chatBox.scrollTop = chatBox.scrollHeight;
 }
+
+// Clears the chat and puts the house rules back as its first line.
+function resetChat() {
+  const rules = document.createElement("p");
+  rules.className = "msg-system rules-note";
+  rules.textContent = COMMUNITY_GUIDELINES;
+  chatBox.replaceChildren(rules);
+}
+
+resetChat();

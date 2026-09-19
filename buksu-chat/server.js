@@ -79,7 +79,8 @@ app.get("/supabase-config.js", (_req, res) => {
   );
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+// `extensions: ["html"]` serves /privacy and /terms from privacy.html and terms.html.
+app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 
 const COLLEGES = ["COT", "CAS", "COE", "COB", "COL", "CON"];
 const CHAT_MODES = ["video", "text"];

@@ -3,163 +3,349 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Ka-Buksuan</title>
+  <title>Ka-Buksuan: Random Video Chat for BukSU Students</title>
+  <meta name="description" content="Ka-Buksuan is a random video and text chat exclusive to Bukidnon State University (BukSU) students. Sign in with your BukSU email and meet a fellow Buksuan.">
+  <link rel="canonical" href="https://ka-buksuans.onrender.com/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b1f4d">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ka-Buksuan">
+  <meta property="og:locale" content="en_PH">
+  <meta property="og:title" content="Ka-Buksuan: Random Video Chat for BukSU Students">
+  <meta property="og:description" content="Meet a random Buksuan for a live video or text chat. Exclusive to Bukidnon State University students.">
+  <meta property="og:url" content="https://ka-buksuans.onrender.com/">
+  <meta property="og:image" content="https://ka-buksuans.onrender.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Ka-Buksuan: random video chat for BukSU students, on a navy and gold campus directory sign">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Ka-Buksuan: Random Video Chat for BukSU Students">
+  <meta name="twitter:description" content="Meet a random Buksuan for a live video or text chat. Exclusive to Bukidnon State University students.">
+  <meta name="twitter:image" content="https://ka-buksuans.onrender.com/og-image.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Big+Shoulders+Stencil:wght@600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@700;800&family=Yellowtail&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <script>
     // Applied before first paint so there's no flash of the wrong theme.
+    // A saved choice wins; otherwise follow the device setting.
     (function () {
       try {
-        if (localStorage.getItem("buksu-theme") === "light") {
-          document.documentElement.setAttribute("data-theme", "light");
-        }
+        var saved = localStorage.getItem("buksu-theme");
+        var wantsLight = saved === "light" ||
+          (saved === null && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+        if (wantsLight) document.documentElement.setAttribute("data-theme", "light");
       } catch (err) {}
     })();
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://ka-buksuans.onrender.com/#website",
+        "url": "https://ka-buksuans.onrender.com/",
+        "name": "Ka-Buksuan",
+        "description": "Random video and text chat exclusive to Bukidnon State University (BukSU) students.",
+        "inLanguage": "en-PH"
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://ka-buksuans.onrender.com/#app",
+        "name": "Ka-Buksuan",
+        "url": "https://ka-buksuans.onrender.com/",
+        "description": "Meet a random Buksuan for a live video or text chat. Sign in with a BukSU student email.",
+        "applicationCategory": "SocialNetworkingApplication",
+        "operatingSystem": "Any (web browser)",
+        "audience": { "@type": "Audience", "audienceType": "Bukidnon State University students" },
+        "isPartOf": { "@id": "https://ka-buksuans.onrender.com/#website" },
+        "inLanguage": "en-PH"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Who can use Ka-Buksuan?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Only Bukidnon State University students with a BukSU student email (@student.buksu.edu.ph) can sign in." }
+          },
+          {
+            "@type": "Question",
+            "name": "Are video calls recorded?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Ka-Buksuan does not record or store video, audio or text chat." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I match only with students from my college?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Tick the option to match only with students from your college before you press Find Match." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I chat without video?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Choose Text Only in Match Setup to chat without using your camera or microphone." }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens if someone breaks the rules?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Press Report during a chat. Users who harass, threaten or use hate speech or violent language can be banned." }
+          }
+        ]
+      }
+    ]
+  }
   </script>
 </head>
 <body>
 
-  <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light mode">
-    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-  </button>
-
-  <div class="bunting" aria-hidden="true"></div>
-
   <div id="login-screen" class="screen">
-    <div class="login-card">
-      <div class="patch">
-        <svg class="patch-icon" viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
+    <button class="theme-toggle theme-toggle-corner" type="button" aria-label="Toggle light mode">
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+
+    <main class="login-main">
+    <section class="board login-board">
+      <div class="login-head">
+        <span class="pictogram" aria-hidden="true">
+          <svg viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
+        </span>
+        <h1 class="wordmark">Ka-Buksuan</h1>
       </div>
-      <h1 class="wordmark">Ka-Buksuan</h1>
       <p class="tagline">Random Video Chat</p>
-      <p class="blurb">Meet a random Buksuan for a live video or text chat. Exclusive to Buksu Student.</p>
-      <button id="login-btn" class="btn-pennant">Login with BukSU Email</button>
-    </div>
+      <p class="blurb">Meet a random Buksuan for a live video or text chat. <strong class="restrict">Exclusive to Buksu Student.</strong></p>
+      <button id="login-btn" class="route" type="button">
+        <span>Login with BukSU Email</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5h12V4l8 8-8 8v-5.5H2z"/></svg>
+      </button>
+      <p class="consent">By logging in you agree to the <a href="/terms">Terms &amp; Conditions</a> and the <a href="/privacy">Privacy Policy</a>.</p>
+    </section>
+
+    <section class="board about" aria-labelledby="how-title">
+      <h2 id="how-title" class="board-title">How Ka-Buksuan works</h2>
+      <ol class="steps">
+        <li>
+          <h3>Sign in with your BukSU email</h3>
+          <p>Use your student email (@student.buksu.edu.ph). Only Bukidnon State University students get in.</p>
+        </li>
+        <li>
+          <h3>Pick your college</h3>
+          <p>Choose your college, add your course if you want, and decide whether to match only with students from your college.</p>
+        </li>
+        <li>
+          <h3>Chat with a fellow Buksuan</h3>
+          <p>Start with video and text, or text only. Press Next to meet someone new, or Stop to leave.</p>
+        </li>
+        <li>
+          <h3>Stay safe</h3>
+          <p>Press Report if someone breaks the rules. Reported users can be banned.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="board about" aria-labelledby="faq-title">
+      <h2 id="faq-title" class="board-title">Questions</h2>
+      <div class="faq">
+        <details>
+          <summary>Who can use Ka-Buksuan?</summary>
+          <p>Only Bukidnon State University students with a BukSU student email (@student.buksu.edu.ph) can sign in.</p>
+        </details>
+        <details>
+          <summary>Are video calls recorded?</summary>
+          <p>No. Ka-Buksuan does not record or store video, audio or text chat. Read the <a href="/privacy">Privacy Policy</a> for the details.</p>
+        </details>
+        <details>
+          <summary>Can I match only with students from my college?</summary>
+          <p>Yes. Tick the option to match only with students from your college before you press Find Match.</p>
+        </details>
+        <details>
+          <summary>Can I chat without video?</summary>
+          <p>Yes. Choose Text Only in Match Setup to chat without using your camera or microphone.</p>
+        </details>
+        <details>
+          <summary>What happens if someone breaks the rules?</summary>
+          <p>Press Report during a chat. Users who harass, threaten or use hate speech or violent language can be banned.</p>
+        </details>
+      </div>
+    </section>
+    </main>
+
+    <footer class="site-foot">
+      <p>Ka-Buksuan is an unofficial student project. It is not run, endorsed or sponsored by Bukidnon State University.</p>
+      <nav aria-label="Legal">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms &amp; Conditions</a>
+      </nav>
+    </footer>
   </div>
 
   <div id="app-screen" class="screen" style="display:none;">
-    <header>
+    <header class="masthead">
       <span class="brand">
-        <svg class="brand-icon" viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
+        <span class="pictogram pictogram-sm" aria-hidden="true">
+          <svg viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
+        </span>
         <span class="brand-word">Ka-Buksuan</span>
       </span>
       <div class="header-right">
         <span id="user-email"></span>
-        <button id="logout-btn" class="btn-patch">Logout</button>
+        <button id="logout-btn" class="plate-btn" type="button">Logout</button>
+        <button class="theme-toggle" type="button" aria-label="Toggle light mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
       </div>
     </header>
 
-    <div id="lobby-panel" class="roster-card">
-      <h2 class="roster-title">Match Setup</h2>
+    <div id="session-strip" class="session-strip" hidden></div>
 
-      <div class="field">
-        <label for="college-select">Your College</label>
-        <select id="college-select" required>
-          <option value="" disabled selected>Select your college&hellip;</option>
-          <option value="COT">College of Technologies (COT)</option>
-          <option value="CAS">College of Arts and Sciences (CAS)</option>
-          <option value="COE">College of Education (COE)</option>
-          <option value="COB">College of Business (COB)</option>
-          <option value="COL">College of Law (COL)</option>
-          <option value="CON">College of Nursing (CON)</option>
-        </select>
-      </div>
+    <section id="lobby-panel" class="board lobby" aria-labelledby="lobby-title">
+      <h2 id="lobby-title" class="board-title">Match Setup</h2>
 
-      <div class="field">
-        <label for="course-input">Course<span class="optional-tag">optional</span></label>
-        <input id="course-input" type="text" placeholder="e.g. BSIT, BSCS, BSED" maxlength="40" list="course-suggestions">
-        <datalist id="course-suggestions">
-          <option value="BSIT"></option>
-          <option value="BSED"></option>
-          <option value="BSBA"></option>
-          <option value="BSN"></option>
-          <option value="BSCOMDEV"></option>
-          <option value="BSDEVCOM"></option>
-          <option value="BSCS"></option>
-          <option value="BSHRM"></option>
-          <option value="BSBA"></option>
-          <option value="BSCEMC"></option>
+      <div class="lobby-grid">
+        <fieldset class="field directory">
+          <legend>Your College</legend>
+          <!-- Rows are generated from the options below so the college list lives in one place. -->
+          <select id="college-select" required hidden>
+            <option value="" disabled selected>Select your college&hellip;</option>
+            <option value="COT">College of Technologies (COT)</option>
+            <option value="CAS">College of Arts and Sciences (CAS)</option>
+            <option value="COE">College of Education (COE)</option>
+            <option value="COB">College of Business (COB)</option>
+            <option value="COL">College of Law (COL)</option>
+            <option value="CON">College of Nursing (CON)</option>
+          </select>
+          <div id="college-list" class="directory-list"></div>
+        </fieldset>
 
-        </datalist>
-      </div>
+        <div class="lobby-side">
+          <div class="field">
+            <label for="course-input">Course<span class="optional-tag">optional</span></label>
+            <input id="course-input" type="text" placeholder="e.g. BSIT, BSCS, BSED" maxlength="40" list="course-suggestions" autocomplete="off">
+            <datalist id="course-suggestions">
+              <option value="BSIT"></option>
+              <option value="BSED"></option>
+              <option value="BSBA"></option>
+              <option value="BSN"></option>
+              <option value="BSCOMDEV"></option>
+              <option value="BSDEVCOM"></option>
+              <option value="BSCS"></option>
+              <option value="BSHRM"></option>
+              <option value="BSBA"></option>
+              <option value="BSCEMC"></option>
 
-      <label class="checkbox-row">
-        <input type="checkbox" id="same-college-checkbox">
-        <span>Match me only with students from my college</span>
-      </label>
-
-      <div class="field">
-        <label>Chat Mode</label>
-        <div class="mode-toggle" role="radiogroup" aria-label="Chat mode">
-          <label class="mode-option">
-            <input type="radio" name="chat-mode" id="mode-video" value="video" checked>
-            <span>Video + Text</span>
-          </label>
-          <label class="mode-option">
-            <input type="radio" name="chat-mode" id="mode-text" value="text">
-            <span>Text Only</span>
-          </label>
-        </div>
-      </div>
-
-      <button id="find-btn" class="btn-pennant" disabled>Find Match</button>
-    </div>
-
-    <div id="video-container">
-      <div class="video-tile">
-        <video id="local-video" autoplay muted playsinline></video>
-        <span class="tile-label">You</span>
-        <span class="college-badge" id="local-badge" hidden></span>
-        <div class="video-placeholder" id="local-placeholder">
-          <div class="avatar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/></svg>
+            </datalist>
           </div>
-          <span>Camera off</span>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="same-college-checkbox">
+            <span>Match me only with students from my college</span>
+          </label>
+
+          <fieldset class="field">
+            <legend>Chat Mode</legend>
+            <div class="mode-toggle">
+              <label class="mode-option">
+                <input type="radio" name="chat-mode" id="mode-video" value="video" checked>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/></svg>
+                <span>Video + Text</span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="chat-mode" id="mode-text" value="text">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
+                <span>Text Only</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <button id="find-btn" class="route" type="button" disabled>
+            <span>Find Match</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5h12V4l8 8-8 8v-5.5H2z"/></svg>
+          </button>
         </div>
       </div>
-      <div class="video-tile">
-        <video id="remote-video" autoplay playsinline></video>
-        <span class="tile-label">Stranger</span>
-        <span class="college-badge" id="remote-badge" hidden></span>
-        <div class="video-placeholder" id="remote-placeholder">
-          <div class="spinner"></div>
-          <span id="remote-placeholder-text">Not connected yet</span>
+    </section>
+
+    <div class="stage">
+      <div id="video-container">
+        <div class="video-tile">
+          <video id="local-video" autoplay muted playsinline></video>
+          <span class="tile-label">You</span>
+          <span class="college-badge" id="local-badge" hidden></span>
+          <div class="video-placeholder" id="local-placeholder">
+            <div class="avatar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/></svg>
+            </div>
+            <span>Camera off</span>
+          </div>
+        </div>
+        <div class="video-tile">
+          <video id="remote-video" autoplay playsinline></video>
+          <span class="tile-label">Stranger</span>
+          <span class="college-badge" id="remote-badge" hidden></span>
+          <div class="video-placeholder" id="remote-placeholder">
+            <div class="idle-lockup" aria-hidden="true">
+              <div class="pictogram idle-mark">
+                <svg viewBox="0 0 28 26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9 12 4l10 5-10 5z"/><path d="M6 11.5V17c0 1.5 2.5 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 9v6"/><rect x="16.5" y="14.5" width="10" height="7.5" rx="2"/><path d="M19.5 22l-1.7 2.6v-2.6"/></svg>
+              </div>
+              <div class="idle-word">Ka-Buksuan</div>
+            </div>
+            <div class="searching" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3l10 9-10 9V3z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M6 3l10 9-10 9V3z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M6 3l10 9-10 9V3z"/></svg>
+            </div>
+            <span id="remote-placeholder-text">Not connected yet</span>
+          </div>
+          <button id="tap-to-play-btn" class="plate-btn primary tap-to-play" type="button" hidden>Tap to enable video &amp; audio</button>
+        </div>
+      </div>
+
+      <div class="console">
+        <div id="status-bar" role="status">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-text">Not connected</span>
+        </div>
+
+        <div id="controls">
+          <button id="next-btn" class="plate-btn primary" type="button" style="display:none;">
+            <span>Next</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5h12V4l8 8-8 8v-5.5H2z"/></svg>
+          </button>
+          <button id="stop-btn" class="plate-btn" type="button" style="display:none;">Stop</button>
+          <button id="report-btn" class="plate-btn danger" type="button" style="display:none;">Report</button>
+        </div>
+      </div>
+
+      <div id="chat-container" class="board chat">
+        <div id="chat-box" aria-live="polite"></div>
+        <div id="chat-input-row">
+          <input id="chat-input" placeholder="Type a message..." aria-label="Message" autocomplete="off" disabled>
+          <button id="send-btn" disabled class="plate-btn primary" type="button">
+            <span>Send</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5h12V4l8 8-8 8v-5.5H2z"/></svg>
+          </button>
         </div>
       </div>
     </div>
 
-    <div id="status-bar">
-      <span class="dot"></span>
-      <span id="status-text">Not connected</span>
-    </div>
-
-    <div id="controls">
-      <button id="next-btn" class="btn-patch" style="display:none;">Next</button>
-      <button id="stop-btn" class="btn-patch" style="display:none;">Stop</button>
-      <button id="report-btn" class="btn-report" style="display:none;">Report</button>
-    </div>
-
-    <div id="chat-container">
-      <div id="chat-box"></div>
-      <div id="chat-input-row">
-        <input id="chat-input" placeholder="Type a message..." disabled>
-        <button id="send-btn" disabled class="btn-pennant btn-small">Send</button>
-      </div>
-    </div>
+    <footer class="site-foot">
+      <nav aria-label="Legal">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms &amp; Conditions</a>
+      </nav>
+    </footer>
   </div>
 
   <dialog id="modal-dialog" class="modal-dialog" aria-labelledby="modal-title">
-    <form method="dialog" class="modal-form">
+    <form method="dialog" class="modal-form board">
       <h3 id="modal-title" class="modal-title"></h3>
       <p id="modal-message" class="modal-message"></p>
       <textarea id="modal-input" class="modal-input" rows="3" hidden></textarea>
       <div class="modal-actions">
-        <button id="modal-cancel-btn" value="cancel" formnovalidate class="btn-patch">Cancel</button>
-        <button id="modal-ok-btn" value="ok" class="btn-pennant btn-small">OK</button>
+        <button id="modal-cancel-btn" value="cancel" formnovalidate class="plate-btn">Cancel</button>
+        <button id="modal-ok-btn" value="ok" class="plate-btn primary">OK</button>
       </div>
     </form>
   </dialog>

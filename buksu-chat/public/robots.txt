@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /socket.io/
+Disallow: /supabase-config.js
+
+Sitemap: https://ka-buksuans.onrender.com/sitemap.xml
+ 
