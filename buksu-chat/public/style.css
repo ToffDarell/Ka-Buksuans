@@ -499,43 +499,6 @@ button:disabled {
   padding: 0 12px;
 }
 
-/* A one-line summary of the setup panel while a call is running. */
-.session-strip {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px 8px 8px;
-  background: var(--navy);
-  color: var(--vinyl);
-  border-radius: 6px;
-  font-size: 0.9375rem;
-  box-shadow: var(--lift);
-}
-
-.session-strip[hidden] {
-  display: none;
-}
-
-.strip-code {
-  flex: none;
-  padding: 5px 10px 4px;
-  background: var(--chip);
-  color: var(--chip-ink);
-  border-radius: 3px;
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 1.125rem;
-  line-height: 1;
-  letter-spacing: 0.01em;
-}
-
-.strip-text {
-  min-width: 0;
-  line-height: 1.3;
-  color: var(--vinyl-dim);
-}
-
 /* ---------- Match setup ---------- */
 .lobby {
   width: 100%;
@@ -881,8 +844,8 @@ input[type="text"]:focus-visible,
 .video-tile:last-child {
   flex: 1 1 auto;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  min-height: 240px;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
   max-height: calc(100vh - 300px);
   max-height: calc(100dvh - 300px);
 }
@@ -893,7 +856,7 @@ input[type="text"]:focus-visible,
   bottom: 12px;
   z-index: 3;
   width: clamp(104px, 24%, 200px);
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   border-width: 3px;
 }
 
@@ -939,6 +902,12 @@ input[type="text"]:focus-visible,
 
 .college-badge[hidden] {
   display: none;
+}
+
+/* On the stranger's tile the badge sits top-left; Report takes the top-right corner. */
+#remote-badge {
+  left: 8px;
+  right: auto;
 }
 
 .video-tile:first-child .tile-label {
@@ -1109,6 +1078,8 @@ input[type="text"]:focus-visible,
 }
 
 #status-bar {
+  position: relative;
+  overflow: hidden;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 48px;
@@ -1130,6 +1101,7 @@ input[type="text"]:focus-visible,
 
 /* Status lamp: a shape and a pattern per state, so color is never the only signal. */
 #status-bar .dot {
+  position: relative;
   flex: none;
   width: 20px;
   height: 20px;
@@ -1142,6 +1114,50 @@ input[type="text"]:focus-visible,
   background: repeating-linear-gradient(-45deg, var(--gold) 0 4px, var(--ink) 4px 8px);
 }
 
+/* Searching or connecting: a sonar ring pulses out of the lamp, and a thin bar
+   sweeps along the bottom edge. Both stop the moment the status changes. */
+#status-bar.state-waiting .dot::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  opacity: 0;
+  animation: searchPing 1.5s ease-out infinite;
+}
+
+#status-bar.state-waiting::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 32%;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--vinyl-dim);
+  animation: searchSweep 1.6s ease-in-out infinite;
+}
+
+@keyframes searchPing {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2);
+  }
+}
+
+@keyframes searchSweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 #status-bar.state-connected .dot {
   box-shadow: none;
   background: var(--go) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.5 10.5l3.5 3.5 7.5-8' fill='none' stroke='%23061233' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E") center / 100% no-repeat;
@@ -1152,27 +1168,180 @@ input[type="text"]:focus-visible,
   background: var(--stop) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5.5 5.5l9 9M14.5 5.5l-9 9' fill='none' stroke='%23061233' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E") center / 100% no-repeat;
 }
 
+/* Connected with video: the status moves onto the stranger's tile as a small pill,
+   so the big bar is not left sitting on screen for the whole call. */
+#app-screen:not(.text-only) #status-bar.state-connected {
+  display: none;
+}
+
+/* Text Only: the "Connected" bar fades out after 3s (app.js adds .is-fading, then .is-hidden). */
+#status-bar {
+  transition: opacity 0.5s ease;
+}
+
+#status-bar.is-fading {
+  opacity: 0;
+}
+
+#status-bar.no-transition {
+  transition: none;
+}
+
+#status-bar.is-hidden {
+  display: none;
+}
+
+/* With the bar gone, NEXT, STOP and REPORT share the whole row. */
+#app-screen.in-call.text-only .console:has(#status-bar.is-hidden) #controls {
+  flex: 1 1 0;
+  width: 100%;
+}
+
+#app-screen.in-call.text-only .console:has(#status-bar.is-hidden) #controls .plate-btn {
+  flex: 1 1 0;
+}
+
+.tile-meta {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tile-meta .tile-label {
+  position: static;
+}
+
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 8px;
+  background: var(--navy);
+  color: var(--vinyl);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Fades out after 3s (driven by app.js adding .is-fading). .no-transition lets a new
+   connection snap the pill back to fully visible instantly. */
+.conn-pill {
+  opacity: 1;
+  transition: opacity 0.5s ease;
+}
+
+.conn-pill.is-fading {
+  opacity: 0;
+}
+
+.conn-pill.no-transition {
+  transition: none;
+}
+
+.conn-pill[hidden] {
+  display: none;
+}
+
+.pill-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--go) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.5 10.5l3.5 3.5 7.5-8' fill='none' stroke='%23061233' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+
+/* Report: a compact overlay in the stranger tile's top-right corner. Small and set apart from
+   Next and Stop so it is not hit by accident, but always one tap away. */
+.report-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ffd6d6;
+  border: 1.5px solid #ff4d4d;
+  border-radius: 6px;
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.report-overlay svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: #ff4d4d;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.15s ease;
+}
+
+.report-overlay:hover {
+  background: rgba(255, 77, 77, 0.28);
+  border-color: #ff8080;
+  color: #ffffff;
+}
+
+.report-overlay:hover svg {
+  stroke: #ff8080;
+}
+
 #controls {
   flex: none;
   display: flex;
   gap: 10px;
 }
 
+/* Control bar: NEXT, STOP and REPORT are one sleek row of bold Inter caps, each with an icon. */
 #controls .plate-btn {
-  min-height: 48px;
+  min-height: 60px;
   padding: 0 18px;
+  gap: 10px;
+  font-family: var(--font-ui);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#controls .plate-btn svg {
+  width: 22px;
+  height: 22px;
 }
 
 #controls #next-btn {
   min-width: 140px;
 }
 
-/* Next is a big primary action, so it keeps the condensed button face like the route rows. */
-#controls #next-btn {
-  font-family: var(--font-display);
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+/* Outline icons (the warning triangle) are drawn with a stroke instead of a fill. */
+.plate-btn svg.icon-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Report: a red frame and red type so moderation reads as its own thing. */
+#controls #report-btn {
+  color: var(--stop-text);
+  box-shadow: inset 0 0 0 2px var(--stop);
 }
 
 /* ---------- Chat ---------- */
@@ -1333,7 +1502,8 @@ input[type="text"]:focus-visible,
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
       "video video"
-      "console chat";
+      "console console"
+      "chat chat";
     align-items: stretch;
   }
 
@@ -1345,10 +1515,10 @@ input[type="text"]:focus-visible,
     z-index: auto;
     flex: 1 1 0;
     width: auto;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 9;
     min-height: 0;
-    max-height: max(260px, calc(100vh - 425px));
-    max-height: max(260px, calc(100dvh - 425px));
+    max-height: max(240px, calc(100vh - 330px));
+    max-height: max(240px, calc(100dvh - 330px));
     border-width: 4px;
   }
 
@@ -1382,34 +1552,54 @@ input[type="text"]:focus-visible,
     height: 28px;
   }
 
-  /* Big, fat controls under the stranger's tile. */
+  /* One 64px bar across the width, under both tiles: the status line on the left while it
+     searches, and NEXT and STOP sharing the rest. Once connected the status steps aside
+     and NEXT and STOP take the whole bar. */
   .console {
-    flex-direction: column;
+    flex-direction: row;
+    align-items: stretch;
     gap: 12px;
   }
 
   #status-bar {
-    flex: none;
+    flex: 1 1 0;
+    min-height: 64px;
   }
 
   #controls {
-    flex: 1 1 auto;
-    width: 100%;
+    flex: 1 1 0;
+    width: auto;
   }
 
   #controls .plate-btn {
     flex: 1 1 0;
-    min-height: 84px;
-    font-size: 1.375rem;
+    min-height: 64px;
+    font-size: 1.15rem;
   }
 
   #controls #next-btn {
-    flex: 1.5 1 0;
+    flex: 1 1 0;
     min-width: 0;
   }
 
+  /* A tall chat: room for 5 to 8 messages, growing with the window. The input stays pinned
+     at the bottom of the panel. */
+  #chat-container {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  /* Sized so header, video, control bar and chat add up to exactly one screen. The 583px is
+     everything else on the page: padding 32, header 52, video 305, bar 64, gaps 48 and the
+     chat panel's own padding and input 82. */
   #chat-box {
-    min-height: 110px;
+    min-height: clamp(150px, calc(100vh - 583px), 320px);
+    min-height: clamp(150px, calc(100dvh - 583px), 320px);
+  }
+
+  #app-screen.in-call {
+    padding-top: 16px;
+    padding-bottom: 16px;
   }
 
   /* Text only: no video, so the chat gets the whole stage. */
@@ -1434,18 +1624,27 @@ input[type="text"]:focus-visible,
   }
 
   #app-screen.in-call.text-only #controls .plate-btn {
-    min-height: 46px;
-    font-size: 1rem;
+    flex: 0 0 150px;
+    min-height: 56px;
+    font-size: 1.1rem;
   }
 
+  /* Text only: header, control bar and the chat panel fill one screen exactly. */
   #app-screen.in-call.text-only #chat-box {
-    min-height: 46vh;
+    min-height: max(220px, calc(100vh - 262px));
+    min-height: max(220px, calc(100dvh - 262px));
   }
 }
 
 /* ---------- Phones: self-view is a small inset, controls sit under the video ---------- */
 @media (max-width: 759px) {
-  .idle-mark {
+  /* The 16:9 tile is short on a phone, so lift the idle content clear of the self-view inset. */
+  .video-tile:last-child .video-placeholder {
+    padding: 8px 0 64px;
+  }
+
+  .idle-mark,
+  .video-tile:last-child .searching {
     display: none;
   }
 
@@ -1462,6 +1661,17 @@ input[type="text"]:focus-visible,
   #app-screen.in-call.text-only #chat-container {
     min-height: 58vh;
     min-height: 58dvh;
+  }
+
+  /* Tall phones: the call fills the whole screen. The stage takes the leftover height and the
+     chat panel stretches to the bottom, instead of leaving an empty band under it. */
+  #app-screen.in-call .stage {
+    flex: 1 1 auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  #app-screen.in-call.text-only .stage {
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 }
 
@@ -1507,12 +1717,24 @@ input[type="text"]:focus-visible,
     width: 100%;
   }
 
+  /* Three buttons must fit a 360px phone: shrink the padding, gap and icons, not the touch height. */
   #controls .plate-btn {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 8px;
+    gap: 6px;
+    font-size: 1rem;
+    letter-spacing: 0.03em;
+  }
+
+  #controls .plate-btn svg {
+    width: 18px;
+    height: 18px;
   }
 
   #controls #next-btn {
-    flex: 2 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
 
@@ -1736,11 +1958,12 @@ a.brand {
 /* ---------- Footer on the wall ---------- */
 .site-foot {
   width: 100%;
+  max-width: 1100px; 
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 4px 4px 0;
-  font-size: 0.9375rem;
+  font-size: 0.875rem; 
   line-height: 1.45;
   color: var(--wall-ink-dim);
 }
@@ -1751,8 +1974,8 @@ a.brand {
 
 .site-foot nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 22px;
+  flex-wrap: nowrap;
+  gap: 8px 16px;
 }
 
 .site-foot a:not([class]) {

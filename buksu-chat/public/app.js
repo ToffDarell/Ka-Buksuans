@@ -318,10 +318,80 @@ function initSocket() {
   });
 }
 
+const connPill = document.getElementById("conn-pill");
+const connPillText = document.getElementById("conn-pill-text");
+
 function setStatus(state, text) {
   statusText.textContent = text;
   statusBar.classList.remove("state-waiting", "state-connected", "state-ended");
   if (state) statusBar.classList.add(`state-${state}`);
+
+  // With video, "connected" is shown as a small pill on the stranger's tile and the
+  // status bar steps aside (see style.css). Text-only has no tile, so it keeps the bar.
+  const textOnly = appScreen.classList.contains("text-only");
+  if (state === "connected" && !textOnly) showConnPill(text);
+  else hideConnPill();
+
+  // Text Only has no video tile, so there the status bar itself fades out after 3 seconds.
+  if (state === "connected" && textOnly) showStatusBarBriefly();
+  else restoreStatusBar();
+}
+
+let statusBarFadeTimer = null;
+let statusBarHideTimer = null;
+
+function restoreStatusBar() {
+  clearTimeout(statusBarFadeTimer);
+  clearTimeout(statusBarHideTimer);
+  statusBar.classList.add("no-transition"); // snap back with no fade-in
+  statusBar.classList.remove("is-fading", "is-hidden");
+  void statusBar.offsetWidth;
+  statusBar.classList.remove("no-transition");
+}
+
+function showStatusBarBriefly() {
+  restoreStatusBar();
+  statusBarFadeTimer = setTimeout(() => {
+    statusBar.classList.add("is-fading");
+    statusBarHideTimer = setTimeout(() => {
+      statusBar.classList.add("is-hidden");
+    }, CONN_PILL_FADE_MS);
+  }, CONN_PILL_VISIBLE_MS);
+}
+
+// The Connected pill is a confirmation, not a permanent label: it shows for 3 seconds, then
+// fades out over half a second. The "Stranger" tag stays. Every new connection (a new match,
+// or a reconnect) resets the pill instantly and restarts the timer.
+const CONN_PILL_VISIBLE_MS = 3000;
+const CONN_PILL_FADE_MS = 500; // keep in step with the opacity transition in style.css
+let connPillFadeTimer = null;
+let connPillHideTimer = null;
+
+function hideConnPill() {
+  clearTimeout(connPillFadeTimer);
+  clearTimeout(connPillHideTimer);
+  connPill.classList.remove("is-fading");
+  connPill.hidden = true;
+}
+
+function showConnPill(text) {
+  clearTimeout(connPillFadeTimer);
+  clearTimeout(connPillHideTimer);
+  connPillText.textContent = text;
+
+  // Snap back to fully visible with no fade-in, even if it was halfway through fading out.
+  connPill.classList.add("no-transition");
+  connPill.classList.remove("is-fading");
+  connPill.hidden = false;
+  void connPill.offsetWidth; // apply the reset before the transition is switched back on
+  connPill.classList.remove("no-transition");
+
+  connPillFadeTimer = setTimeout(() => {
+    connPill.classList.add("is-fading");
+    connPillHideTimer = setTimeout(() => {
+      connPill.hidden = true;
+    }, CONN_PILL_FADE_MS);
+  }, CONN_PILL_VISIBLE_MS);
 }
 
 function showBadge(el, college, course) {
@@ -410,24 +480,21 @@ Array.from(collegeSelect.options)
     collegeList.appendChild(label);
   });
 
-// One-line summary of the setup, shown while the lobby is folded away.
-const sessionStrip = document.getElementById("session-strip");
+// Report sits on the stranger's video. Text Only has no video, so there it moves into the
+// control bar and is styled as a normal danger button.
+const remoteTile = remoteVideo.closest(".video-tile");
+const controlsBar = document.getElementById("controls");
 
-function showSessionStrip(profile) {
-  const parts = [COLLEGE_NAMES[profile.college] || profile.college];
-  if (profile.course) parts.push(profile.course);
-  parts.push(profile.mode === "text" ? "Text Only" : "Video + Text");
-
-  const code = document.createElement("span");
-  code.className = "strip-code";
-  code.textContent = profile.college;
-
-  const text = document.createElement("span");
-  text.className = "strip-text";
-  text.textContent = parts.join(" · ");
-
-  sessionStrip.replaceChildren(code, text);
-  sessionStrip.hidden = false;
+function placeReportButton(mode) {
+  if (mode === "text") {
+    controlsBar.appendChild(reportBtn);
+    reportBtn.classList.remove("report-overlay");
+    reportBtn.classList.add("plate-btn", "danger");
+  } else {
+    remoteTile.appendChild(reportBtn);
+    reportBtn.classList.add("report-overlay");
+    reportBtn.classList.remove("plate-btn", "danger");
+  }
 }
 
 // ---------- Matchmaking controls ----------
@@ -438,6 +505,7 @@ findBtn.addEventListener("click", async () => {
   const course = courseInput.value.trim();
   const matchSameCollege = sameCollegeCheckbox.checked;
   const mode = getSelectedMode();
+  placeReportButton(mode);
 
   findBtn.disabled = true;
 
@@ -456,7 +524,6 @@ findBtn.addEventListener("click", async () => {
 
   currentProfile = { college, course, matchSameCollege, mode };
   showBadge(localBadge, college, course);
-  showSessionStrip(currentProfile);
 
   socket.emit("find-match", currentProfile);
   lobbyPanel.style.display = "none";
@@ -513,9 +580,9 @@ async function getLocalMedia() {
   }
 
   // Only "ideal" constraints — iOS Safari rejects "exact" ones it can't meet,
-  // and 640x480 keeps mobile-data bitrates realistic.
+  // and 640x360 (16:9, matching the video tiles) keeps mobile-data bitrates realistic.
   localStream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 360 }, aspectRatio: { ideal: 16 / 9 } },
     audio: { echoCancellation: true, noiseSuppression: true }
   });
   console.log(
@@ -936,7 +1003,6 @@ function cleanupCall() {
   lobbyPanel.style.display = "flex";
   videoContainer.style.display = "flex";
   appScreen.classList.remove("in-call", "text-only");
-  sessionStrip.hidden = true;
   findBtn.disabled = !collegeSelect.value;
 }
 
@@ -960,7 +1026,7 @@ function appendChatMessage(sender, message) {
   p.className = sender === "You" ? "msg-you" : "msg-stranger";
   p.textContent = message;
   chatBox.appendChild(p);
-  chatBox.scrollTop = chatBox.scrollHeight;
+  scrollChatToEnd();
 }
 
 function appendSystemMessage(message) {
@@ -968,7 +1034,14 @@ function appendSystemMessage(message) {
   p.className = "msg-system";
   p.textContent = message;
   chatBox.appendChild(p);
-  chatBox.scrollTop = chatBox.scrollHeight;
+  scrollChatToEnd();
+}
+
+// New messages glide into view; people who prefer reduced motion get an instant jump.
+const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function scrollChatToEnd() {
+  chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: reduceMotionQuery.matches ? "auto" : "smooth" });
 }
 
 // Clears the chat and puts the house rules back as its first line.
