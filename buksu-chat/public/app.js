@@ -141,14 +141,43 @@ let peerGeneration = 0;
 const MAX_ICE_RESTARTS = 3;
 const CONNECT_TIMEOUT_MS = 15000;
 
+// Metered's free TURN plan only includes 500 MB of relay traffic a month, counted in both
+// directions, and video is almost all of it. Capping what each browser sends stretches that
+// quota (see capVideoBitrate). Raise this if 300 kbps looks too soft; lower it to save more.
+const MAX_VIDEO_BITRATE_KBPS = 300;
+
 // Relay (TURN) servers come from our own /ice-servers route, which asks Metered for
 // short-lived credentials. The Metered API key never reaches the browser. Google's public
 // STUN server is always included as well.
 const GOOGLE_STUN = { urls: "stun:stun.l.google.com:19302" };
 const ICE_FETCH_TIMEOUT_MS = 4000;
 
-// Fetched fresh for every new peer connection. If the request fails or times out we fall back
-// to STUN only: calls between easy networks still work, but there is no relay for hard ones.
+// Second, free relay, again because of Metered's 500 MB/month quota: once that runs out (or if
+// our own /ice-servers route is down) the browser still has another TURN server to try. It is a
+// shared public account, so treat it as best effort. Browsers try every server and use
+// whichever connects first, so a dead entry here does not slow a call down.
+const OPEN_RELAY_SERVERS = [
+  { urls: "stun:openrelay.metered.ca:80" },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  }
+];
+
+// Fetched fresh for every new peer connection. Order: Google STUN, then Metered's relay servers
+// (the ones we pay quota for), then Open Relay as the fallback. If our own route fails or times
+// out we still return Google STUN plus Open Relay, so there is some chance of a relay.
 async function getIceServers() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ICE_FETCH_TIMEOUT_MS);
@@ -165,10 +194,10 @@ async function getIceServers() {
     if (!Array.isArray(relayServers) || relayServers.length === 0) throw new Error("empty list");
 
     console.log(`[RTC] Got ${relayServers.length} ICE server entries from /ice-servers`);
-    return [GOOGLE_STUN, ...relayServers];
+    return [GOOGLE_STUN, ...relayServers, ...OPEN_RELAY_SERVERS];
   } catch (err) {
-    console.warn("[RTC] Could not get relay servers, using STUN only:", err.name === "AbortError" ? "timed out" : err.message);
-    return [GOOGLE_STUN];
+    console.warn("[RTC] Could not get Metered relay servers, using Google STUN + Open Relay:", err.name === "AbortError" ? "timed out" : err.message);
+    return [GOOGLE_STUN, ...OPEN_RELAY_SERVERS];
   } finally {
     clearTimeout(timer);
   }
@@ -832,6 +861,29 @@ function syncConnectionStatus(pc) {
   }
 }
 
+// Caps the bitrate this browser sends. Only the video sender is touched: audio is a few tens of
+// kbps and stays at its default. It is safe to call more than once. It never throws, because a
+// failed cap must not stop a call from connecting.
+async function capVideoBitrate(pc) {
+  const cap = MAX_VIDEO_BITRATE_KBPS * 1000;
+
+  for (const sender of pc.getSenders()) {
+    if (!sender.track || sender.track.kind !== "video") continue;
+
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      if (params.encodings[0].maxBitrate === cap) continue;
+
+      params.encodings[0].maxBitrate = cap;
+      await sender.setParameters(params);
+      console.log(`[RTC] Video bitrate capped at ${MAX_VIDEO_BITRATE_KBPS} kbps`);
+    } catch (err) {
+      console.warn("[RTC] Could not cap video bitrate:", err.message);
+    }
+  }
+}
+
 async function startPeerConnection() {
   const generation = peerGeneration;
   const iceServers = await getIceServers();
@@ -865,6 +917,10 @@ async function startPeerConnection() {
     pc.addTransceiver("audio", { direction: "recvonly" });
     pc.addTransceiver("video", { direction: "recvonly" });
   }
+
+  // Every new match builds a brand-new connection with new senders, so the cap is applied here
+  // each time, for the initiator and the answerer alike, before any offer or answer is exchanged.
+  await capVideoBitrate(pc);
 
   pc.ontrack = (event) => {
     console.log(
@@ -919,6 +975,8 @@ async function startPeerConnection() {
 
   pc.onsignalingstatechange = () => {
     console.log("[RTC] Signaling state:", pc.signalingState);
+    // Some browsers only honour maxBitrate once negotiation has finished, so apply it again then.
+    if (pc.signalingState === "stable") capVideoBitrate(pc);
   };
 
   pc.oniceconnectionstatechange = () => {
