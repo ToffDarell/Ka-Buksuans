@@ -132,25 +132,47 @@ let disconnectTimer = null;
 let connectTimer = null;
 let signalQueue = Promise.resolve();
 
+// Fetching relay credentials makes creating a peer connection asynchronous. Incoming signals
+// wait on peerReady so an offer can never arrive before its connection exists, and
+// peerGeneration lets a stale setup (Next or Stop pressed mid-fetch) cancel itself.
+let peerReady = Promise.resolve();
+let peerGeneration = 0;
+
 const MAX_ICE_RESTARTS = 3;
 const CONNECT_TIMEOUT_MS = 15000;
 
-// Mobile carrier NATs often block one transport but not another, so offer the
-// relay over UDP, TCP, and TLS on both ports 80 and 443.
-const ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  {
-    urls: [
-      "turn:openrelay.metered.ca:80",
-      "turn:openrelay.metered.ca:80?transport=tcp",
-      "turn:openrelay.metered.ca:443",
-      "turn:openrelay.metered.ca:443?transport=tcp",
-      "turns:openrelay.metered.ca:443?transport=tcp"
-    ],
-    username: "openrelayproject",
-    credential: "openrelayproject"
+// Relay (TURN) servers come from our own /ice-servers route, which asks Metered for
+// short-lived credentials. The Metered API key never reaches the browser. Google's public
+// STUN server is always included as well.
+const GOOGLE_STUN = { urls: "stun:stun.l.google.com:19302" };
+const ICE_FETCH_TIMEOUT_MS = 4000;
+
+// Fetched fresh for every new peer connection. If the request fails or times out we fall back
+// to STUN only: calls between easy networks still work, but there is no relay for hard ones.
+async function getIceServers() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ICE_FETCH_TIMEOUT_MS);
+
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const response = await fetch("/ice-servers", {
+      headers: { Authorization: `Bearer ${session ? session.access_token : ""}` },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const relayServers = await response.json();
+    if (!Array.isArray(relayServers) || relayServers.length === 0) throw new Error("empty list");
+
+    console.log(`[RTC] Got ${relayServers.length} ICE server entries from /ice-servers`);
+    return [GOOGLE_STUN, ...relayServers];
+  } catch (err) {
+    console.warn("[RTC] Could not get relay servers, using STUN only:", err.name === "AbortError" ? "timed out" : err.message);
+    return [GOOGLE_STUN];
+  } finally {
+    clearTimeout(timer);
   }
-];
+}
 
 // Debug aid: open the site with ?relay=1 to force every call through TURN.
 // If that works, TURN is fine; if only ?relay=1 fails, the relay is the problem.
@@ -288,7 +310,8 @@ function initSocket() {
       videoContainer.style.display = "flex";
       setStatus("waiting", "Matched! Connecting...");
       remotePlaceholderText.textContent = "Connecting...";
-      await startPeerConnection();
+      peerReady = startPeerConnection();
+      await peerReady;
     }
   });
 
@@ -296,6 +319,7 @@ function initSocket() {
   // be applied while the offer/answer before it is still being set.
   socket.on("signal", (data) => {
     signalQueue = signalQueue
+      .then(() => peerReady.catch(() => {}))
       .then(() => handleSignal(data))
       .catch((err) => console.error("[RTC] Signal handling error:", err));
   });
@@ -809,8 +833,13 @@ function syncConnectionStatus(pc) {
 }
 
 async function startPeerConnection() {
+  const generation = peerGeneration;
+  const iceServers = await getIceServers();
+  // Next, Stop or a disconnect while we were fetching means this setup is out of date.
+  if (generation !== peerGeneration) return;
+
   const pc = new RTCPeerConnection({
-    iceServers: ICE_SERVERS,
+    iceServers,
     iceTransportPolicy: FORCE_RELAY ? "relay" : "all"
   });
   peerConnection = pc;
@@ -970,6 +999,7 @@ async function handleSignal(data) {
 }
 
 function cleanupPeerOnly() {
+  peerGeneration += 1;
   clearTimeout(disconnectTimer);
   clearTimeout(connectTimer);
   pendingRemoteCandidates = [];

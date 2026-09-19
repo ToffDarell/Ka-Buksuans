@@ -79,6 +79,56 @@ app.get("/supabase-config.js", (_req, res) => {
   );
 });
 
+// ---------- TURN relay credentials (Metered) ----------
+// METERED_API_KEY stays on the server. The browser only ever receives the temporary ICE
+// server list that Metered generates from it.
+const METERED_HOST = (process.env.METERED_DOMAIN || "").trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+const METERED_API_KEY = (process.env.METERED_API_KEY || "").trim();
+const METERED_TIMEOUT_MS = 4000;
+
+app.get("/ice-servers", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+
+  // Same gate as the socket: only a signed-in BukSU student gets relay credentials, so nobody
+  // else can spend the TURN quota.
+  const token = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token) return res.status(401).json({ error: "Authentication required" });
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  const email = data?.user?.email || "";
+  if (error || !email.endsWith(STUDENT_EMAIL_DOMAIN)) {
+    return res.status(401).json({ error: "Invalid or expired session" });
+  }
+
+  if (!METERED_HOST || !METERED_API_KEY) {
+    return res.status(503).json({ error: "TURN service is not configured" });
+  }
+
+  try {
+    // GET https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key>
+    // returns [{ urls }, { urls, username, credential }, ...]
+    const response = await fetch(
+      `https://${METERED_HOST}/api/v1/turn/credentials?apiKey=${encodeURIComponent(METERED_API_KEY)}`,
+      { signal: AbortSignal.timeout(METERED_TIMEOUT_MS) }
+    );
+    if (!response.ok) throw new Error(`Metered answered ${response.status}`);
+
+    const list = await response.json();
+    if (!Array.isArray(list) || list.length === 0) throw new Error("Metered returned no servers");
+
+    // Pass on only the fields WebRTC needs.
+    res.json(
+      list.map(({ urls, username, credential }) =>
+        username ? { urls, username, credential } : { urls }
+      )
+    );
+  } catch (err) {
+    // Log the reason only. The request URL contains the API key, so it is never logged.
+    console.error("ICE server fetch failed:", err.name === "TimeoutError" ? "timed out" : err.message);
+    res.status(502).json({ error: "Could not get relay credentials" });
+  }
+});
+
 // `extensions: ["html"]` serves /privacy and /terms from privacy.html and terms.html.
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 
