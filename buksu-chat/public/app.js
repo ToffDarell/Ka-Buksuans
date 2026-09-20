@@ -81,7 +81,6 @@ const loginScreen = document.getElementById("login-screen");
 const appScreen = document.getElementById("app-screen");
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
-const userEmailEl = document.getElementById("user-email");
 
 const lobbyPanel = document.getElementById("lobby-panel");
 const collegeSelect = document.getElementById("college-select");
@@ -110,9 +109,11 @@ const chatBox = document.getElementById("chat-box");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
 
-// Shown once on sign-in and as the first line of every chat.
+// The full version is shown once on sign-in; the short one is the first line of every chat.
 const COMMUNITY_GUIDELINES =
   "Be respectful. Harassment, hate speech, threats, or violent language are not tolerated. If you encounter this kind of behavior, please use the Report button so the offending user will be banned.";
+const CHAT_RULES_NOTE =
+  "Chat Respectfully: Inappropriate behavior, hate speech, or harassment is strictly prohibited. Use Report if needed.";
 
 // ---------- State ----------
 let currentUser = null;
@@ -258,7 +259,6 @@ async function handleSession(session) {
   if (currentUser) return;
 
   currentUser = session.user;
-  userEmailEl.textContent = session.user.email || "";
   loginScreen.style.display = "none";
   appScreen.style.display = "flex";
 
@@ -314,18 +314,11 @@ function initSocket() {
     if (partner) showBadge(remoteBadge, partner.college, partner.course);
     toggleControls(true);
 
-    const matchMessage = buildMatchMessage(matchInfo);
-    if (matchMessage) appendSystemMessage(matchMessage);
+    const connectedMessage = buildConnectedMessage(matchInfo, partner, mode);
+    if (connectedMessage) appendSystemMessage(connectedMessage);
 
     if (mode === "text") {
       videoContainer.style.display = "none";
-      // The college/course badge lives on the (now-hidden) video tile, so text-only
-      // mode has no other way to show it — surface it as a chat message instead.
-      if (partner) {
-        const partnerCollegeName = COLLEGE_NAMES[partner.college] || partner.college;
-        const partnerInfo = partner.course ? `${partnerCollegeName} · ${partner.course}` : partnerCollegeName;
-        appendSystemMessage(`Stranger is from ${partnerInfo}.`);
-      }
       // No WebRTC negotiation happens in text-only mode, so peerConnection.ontrack
       // (the only other place "connected" is set) never fires — set it directly.
       setStatus("connected", "Connected (Text Only)");
@@ -462,19 +455,29 @@ const COLLEGE_NAMES = Object.fromEntries(
     .map((opt) => [opt.value, opt.textContent.replace(/\s*\([^)]*\)\s*$/, "").trim()])
 );
 
-function buildMatchMessage(matchInfo) {
-  if (!matchInfo) return null;
+// One single system line for a new match, instead of separate "you both..." and "stranger is
+// from..." lines that said the same thing twice.
+function buildConnectedMessage(matchInfo, partner, mode) {
+  const nameOf = (code) => COLLEGE_NAMES[code] || code;
+  const info = matchInfo || {};
+  const shared = info.college ? nameOf(info.college) : null;
 
-  const collegeName = matchInfo.college ? (COLLEGE_NAMES[matchInfo.college] || matchInfo.college) : null;
+  if (info.sameCollege && info.sameCourse) {
+    return `Connected! Both users are in ${shared}, studying ${info.course}.`;
+  }
+  if (info.sameCollege) {
+    return `Connected! Both users are in ${shared}.`;
+  }
 
-  if (matchInfo.sameCollege && matchInfo.sameCourse) {
-    return `You both are from ${collegeName}, studying ${matchInfo.course}.`;
+  // Text Only has no video tile and badge, so it also says where the stranger is from.
+  const partnerCollege = partner && partner.college ? nameOf(partner.college) : null;
+  if (info.sameCourse) {
+    return mode === "text" && partnerCollege
+      ? `Connected! Both users are studying ${info.course}. Stranger is from ${partnerCollege}.`
+      : `Connected! Both users are studying ${info.course}.`;
   }
-  if (matchInfo.sameCollege) {
-    return `You both are from ${collegeName}.`;
-  }
-  if (matchInfo.sameCourse) {
-    return `You're both studying ${matchInfo.course}.`;
+  if (mode === "text" && partnerCollege) {
+    return `Connected! Stranger is from ${partnerCollege}${partner.course ? " · " + partner.course : ""}.`;
   }
   return null;
 }
@@ -529,23 +532,6 @@ Array.from(collegeSelect.options)
     label.append(input, code, name, arrow);
     collegeList.appendChild(label);
   });
-
-// Report sits on the stranger's video. Text Only has no video, so there it moves into the
-// control bar and is styled as a normal danger button.
-const remoteTile = remoteVideo.closest(".video-tile");
-const controlsBar = document.getElementById("controls");
-
-function placeReportButton(mode) {
-  if (mode === "text") {
-    controlsBar.appendChild(reportBtn);
-    reportBtn.classList.remove("report-overlay");
-    reportBtn.classList.add("plate-btn", "danger");
-  } else {
-    remoteTile.appendChild(reportBtn);
-    reportBtn.classList.add("report-overlay");
-    reportBtn.classList.remove("plate-btn", "danger");
-  }
-}
 
 // ---------- Camera layout on phones ----------
 // Two layouts, switched with the small button in the header (phones only):
@@ -610,7 +596,6 @@ findBtn.addEventListener("click", async () => {
   const course = courseInput.value.trim();
   const matchSameCollege = sameCollegeCheckbox.checked;
   const mode = getSelectedMode();
-  placeReportButton(mode);
 
   findBtn.disabled = true;
 
@@ -1187,11 +1172,44 @@ function scrollChatToEnd() {
   chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: reduceMotionQuery.matches ? "auto" : "smooth" });
 }
 
-// Clears the chat and puts the house rules back as its first line.
+// Once someone taps the X on the rules note, it stays hidden for good (on this device).
+const HIDE_RULES_KEY = "buksu-hide-chat-rules";
+
+function rulesAreHidden() {
+  try {
+    return localStorage.getItem(HIDE_RULES_KEY) === "1";
+  } catch (err) {
+    return false;
+  }
+}
+
+// Clears the chat and puts the house rules back as its first line, unless they were dismissed.
 function resetChat() {
-  const rules = document.createElement("p");
-  rules.className = "msg-system rules-note";
-  rules.textContent = COMMUNITY_GUIDELINES;
+  if (rulesAreHidden()) {
+    chatBox.replaceChildren();
+    return;
+  }
+
+  const rules = document.createElement("div");
+  rules.className = "rules-note";
+  rules.setAttribute("role", "note");
+
+  const text = document.createElement("span");
+  text.textContent = CHAT_RULES_NOTE;
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "rules-close";
+  close.setAttribute("aria-label", "Hide chat rules");
+  close.textContent = "✕";
+  close.addEventListener("click", () => {
+    rules.remove();
+    try {
+      localStorage.setItem(HIDE_RULES_KEY, "1");
+    } catch (err) {}
+  });
+
+  rules.append(text, close);
   chatBox.replaceChildren(rules);
 }
 

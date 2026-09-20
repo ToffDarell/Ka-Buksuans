@@ -489,15 +489,6 @@ button:disabled {
   min-width: 0;
 }
 
-#user-email {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.9375rem;
-  color: var(--vinyl-dim);
-}
-
 .masthead .plate-btn {
   min-height: 36px;
   padding: 0 12px;
@@ -906,7 +897,8 @@ input[type="text"]:focus-visible,
   display: none;
 }
 
-/* On the stranger's tile the badge sits top-left; Report takes the top-right corner. */
+/* Both tiles show their college badge in the same place: the top-left corner. */
+#local-badge,
 #remote-badge {
   left: 8px;
   right: auto;
@@ -1141,8 +1133,10 @@ input[type="text"]:focus-visible,
   background: var(--stop) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5.5 5.5l9 9M14.5 5.5l-9 9' fill='none' stroke='%23061233' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E") center / 100% no-repeat;
 }
 
-/* Connected with video: the status moves onto the stranger's tile as a small pill,
-   so the big bar is not left sitting on screen for the whole call. */
+/* With video, "Searching..." and "Connecting..." are already on the stranger's tile (spinner and
+   text) and "Connected" is its pill, so the bar is not needed for those. It stays only for errors
+   such as "Stranger disconnected" or "Connection failed". */
+#app-screen:not(.text-only) #status-bar.state-waiting,
 #app-screen:not(.text-only) #status-bar.state-connected {
   display: none;
 }
@@ -1225,55 +1219,8 @@ input[type="text"]:focus-visible,
   background: var(--go) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.5 10.5l3.5 3.5 7.5-8' fill='none' stroke='%23061233' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E") center / 100% no-repeat;
 }
 
-/* Report: a compact overlay in the stranger tile's top-right corner. Small and set apart from
-   Next and Stop so it is not hit by accident, but always one tap away. */
-.report-overlay {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 10px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #ffd6d6;
-  border: 1.5px solid #ff4d4d;
-  border-radius: 6px;
-  font-family: var(--font-ui);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.report-overlay svg {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  fill: none;
-  stroke: #ff4d4d;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: stroke 0.15s ease;
-}
-
-.report-overlay:hover {
-  background: rgba(255, 77, 77, 0.28);
-  border-color: #ff8080;
-  color: #ffffff;
-}
-
-.report-overlay:hover svg {
-  stroke: #ff8080;
-}
-
-/* Control column: Next, Stop and the College filter are big stacked buttons with soft rounded
-   corners that lift a little on hover. */
+/* Control column: Next and Stop are big stacked buttons with soft rounded corners that lift a
+   little on hover. Report is a small outlined button under them. */
 #controls {
   flex: 1 1 auto;
   display: flex;
@@ -1340,6 +1287,27 @@ input[type="text"]:focus-visible,
   box-shadow: inset 0 0 0 2px var(--stop);
 }
 
+/* Report is smaller, lighter and outlined, so it is clearly a secondary action under the big Next
+   and Stop buttons. */
+#controls #report-btn {
+  flex: 0 0 auto;
+  min-height: 40px;
+  max-height: none;
+  padding: 0 8px;
+  gap: 6px;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--stop);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+#controls #report-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* ---------- Chat ---------- */
 #chat-container {
   grid-area: chat;
@@ -1357,19 +1325,46 @@ input[type="text"]:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 2px 4px 2px 2px;
+  padding: 2px 6px 2px 2px;
   font-size: 0.9375rem;
 }
 
 /* The house rules sit at the top of the chat as a note, not as someone's message. */
-#chat-box p.msg-system.rules-note {
+#chat-box .rules-note {
+  flex: none;
   align-self: stretch;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 0 0 10px;
   margin-bottom: 4px;
   border-bottom: 1.5px solid var(--rule-soft);
+  color: var(--vinyl-dim);
   text-align: left;
   font-size: 0.875rem;
   line-height: 1.4;
+}
+
+.rules-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -4px -4px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rules-close:hover {
+  background: var(--navy-raised);
+  color: var(--vinyl);
 }
 
 #chat-box p {
@@ -1568,19 +1563,53 @@ input[type="text"]:focus-visible,
     padding-bottom: 16px;
   }
 
-  /* Text only: no video, so the chat is tall and the buttons keep a fixed height at the top. */
+  /* Text only on desktop: no video and no side column. The chat spans the whole width of a centred
+     900px column, and NEXT, STOP and REPORT sit in one row directly under it. */
+  #app-screen.in-call.text-only {
+    max-width: 900px;
+  }
+
+  #app-screen.in-call.text-only .stage {
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "chat"
+      "console";
+  }
+
   #app-screen.in-call.text-only #controls {
     flex: 0 0 auto;
+    flex-direction: row;
   }
 
   #app-screen.in-call.text-only #controls .plate-btn {
-    flex: 0 0 auto;
+    flex: 1 1 0;
     min-height: 64px;
   }
 
+  /* Report is a full-size button here (red frame, red type), not the small one the phone uses. */
+  #app-screen.in-call.text-only #controls #report-btn {
+    flex: 1 1 0;
+    min-height: 64px;
+    max-height: none;
+    padding: 0 14px;
+    gap: 10px;
+    border-radius: 12px;
+    background: var(--navy);
+    box-shadow: inset 0 0 0 2px var(--stop), 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  #app-screen.in-call.text-only #controls #report-btn svg {
+    width: 22px;
+    height: 22px;
+  }
+
   #app-screen.in-call.text-only #chat-box {
-    min-height: max(220px, calc(100vh - 182px));
-    min-height: max(220px, calc(100dvh - 182px));
+    min-height: 220px;
   }
 }
 
@@ -1591,25 +1620,28 @@ input[type="text"]:focus-visible,
     padding: 8px 0 64px;
   }
 
-  #app-screen.in-call.text-only #chat-container {
-    min-height: 58vh;
-    min-height: 58dvh;
-  }
-
-  /* Phones: the control column keeps a fixed, comfortable touch width, and the chat takes the
-     rest of the width and ALL of the leftover height, so its input is never clipped. */
+  /* Phones, top to bottom: the two cameras, one full-width chat that takes ALL the leftover height
+     (so its input is never clipped), then one row of NEXT, STOP and REPORT at the very bottom. */
   .stage {
-    --panel-w: 116px;
     gap: 10px;
   }
 
   #app-screen.in-call .stage {
     flex: 1 1 auto;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "video"
+      "chat"
+      "console";
   }
 
+  /* Text Only has no cameras, so its chat starts at the top. */
   #app-screen.in-call.text-only .stage {
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "chat"
+      "console";
   }
 
   /* The stranger's video box already says "Searching for a match...", so on phones the control
@@ -1638,13 +1670,37 @@ input[type="text"]:focus-visible,
     height: 18px;
   }
 
+  /* The bottom bar, in video and Text Only alike. */
+  #controls {
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  #app-screen #controls .plate-btn {
+    flex: 1 1 0;
+    min-height: 52px;
+    max-height: none;
+    font-size: 0.8125rem;
+  }
+
+  /* NEXT is the widest, in gold; STOP is dark navy; REPORT is an outline with red type. */
+  #app-screen #controls #next-btn {
+    flex: 2 1 0;
+    font-size: 1rem;
+  }
+
+  #app-screen #controls #report-btn {
+    box-shadow: inset 0 0 0 1.5px var(--stop);
+  }
+
   #chat-container {
     padding: 12px;
     gap: 8px;
   }
 
   #chat-box {
-    min-height: 160px;
+    min-height: 100px;
   }
 
   #chat-input {
@@ -1698,20 +1754,22 @@ input[type="text"]:focus-visible,
 }
 
 /* ---------- Phones (600px and under): two camera layouts ----------
-   Split (default): the stranger on top and you underneath, in two equal halves, so neither
-   camera is covered. Overlay: the stranger fills the video area and your camera is a small
+   Split (default): the stranger and you side by side in one row, two equal tall portrait halves,
+   so neither camera is covered. Overlay: the stranger fills the video area and your camera is a small
    portrait window in the corner, which you can tap to hide. */
 @media (max-width: 600px) {
   #app-screen.in-call:not(.text-only) .feed-layout-btn {
     display: inline-flex;
   }
 
-  /* ----- Split: two equal halves ----- */
+  /* ----- Split: two equal halves, side by side ----- */
   #app-screen:not(.feed-overlay) #video-container {
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
-    height: clamp(260px, 44vh, 420px);
-    height: clamp(260px, 44dvh, 420px);
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    max-height: 46vh;
+    max-height: 46dvh;
   }
 
   #app-screen:not(.feed-overlay) .video-tile:first-child,
@@ -1719,20 +1777,36 @@ input[type="text"]:focus-visible,
     position: relative;
     inset: auto;
     z-index: auto;
-    flex: 1 1 0;
-    width: 100%;
+    flex: 0 0 auto;
+    width: calc(50% - 4px);
+    height: 100%;
+    min-width: 0;
     min-height: 0;
     max-height: none;
     aspect-ratio: auto;
-    border-width: 4px;
+    border-width: 3px;
   }
 
   #app-screen:not(.feed-overlay) .video-tile:last-child {
-    order: 1; /* the stranger, on top: college badge, Stranger tag and Report */
+    order: 1; /* the stranger, on the left: college badge, Stranger tag and Report */
   }
 
   #app-screen:not(.feed-overlay) .video-tile:first-child {
-    order: 2; /* you, underneath: the You tag */
+    order: 2; /* you, on the right: the You tag */
+  }
+
+  /* A half-width tile has no room for the Stranger tag and the "Connected" pill side by side, so
+     the pill stacks above the tag. */
+  #app-screen:not(.feed-overlay) .tile-meta {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: calc(100% - 16px);
+  }
+
+  #app-screen:not(.feed-overlay) .conn-pill {
+    padding: 5px 10px 5px 6px;
+    font-size: 0.8125rem;
   }
 
   #app-screen:not(.feed-overlay) .video-tile:first-child .tile-label {
@@ -1902,10 +1976,6 @@ input[type="text"]:focus-visible,
 
   .brand-word {
     font-size: 1.5rem;
-  }
-
-  #user-email {
-    display: none;
   }
 
   .lobby {
