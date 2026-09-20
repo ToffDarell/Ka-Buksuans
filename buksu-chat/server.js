@@ -21,8 +21,6 @@ const io = new Server(server, {
   cors: { origin: allowedOrigins }
 });
 
-const STUDENT_EMAIL_DOMAIN = "@student.buksu.edu.ph";
-
 // Server-only admin client — verifies session tokens and writes reports
 // with full access, bypassing RLS. SUPABASE_SERVICE_ROLE_KEY must never be
 // sent to the browser or added to the /supabase-config.js route below.
@@ -33,7 +31,7 @@ const supabaseAdmin = createClient(
 );
 
 // Rejects the connection before any handler runs unless the client proves,
-// via a live Supabase access token, that it's a signed-in BukSU student.
+// via a live Supabase access token, that it's a signed-in user (any Google account).
 io.use(async (socket, next) => {
   const token = socket.handshake.auth && socket.handshake.auth.token;
 
@@ -48,9 +46,6 @@ io.use(async (socket, next) => {
   }
 
   const email = data.user.email || "";
-  if (!email.endsWith(STUDENT_EMAIL_DOMAIN)) {
-    return next(new Error("Only BukSU student emails are allowed"));
-  }
 
   // Fail open on infrastructure errors (a Supabase hiccup shouldn't lock
   // everyone out) — only an explicit is_banned = true blocks the connection.
@@ -89,14 +84,13 @@ const METERED_TIMEOUT_MS = 4000;
 app.get("/ice-servers", async (req, res) => {
   res.set("Cache-Control", "no-store");
 
-  // Same gate as the socket: only a signed-in BukSU student gets relay credentials, so nobody
+  // Same gate as the socket: only a signed-in user gets relay credentials, so nobody
   // else can spend the TURN quota.
   const token = (req.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return res.status(401).json({ error: "Authentication required" });
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
-  const email = data?.user?.email || "";
-  if (error || !email.endsWith(STUDENT_EMAIL_DOMAIN)) {
+  if (error || !data?.user) {
     return res.status(401).json({ error: "Invalid or expired session" });
   }
 

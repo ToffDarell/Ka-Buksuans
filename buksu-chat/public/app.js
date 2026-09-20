@@ -253,18 +253,12 @@ logoutBtn.addEventListener("click", async () => {
 async function handleSession(session) {
   if (!session) return;
 
-  const email = session.user.email;
-  if (!email.endsWith("@student.buksu.edu.ph")) {
-    await showAlert("Only BukSU student emails are allowed.", "Access restricted");
-    supabaseClient.auth.signOut();
-    return;
-  }
-
+  // Any Google account that Supabase has signed in is allowed. There is no email domain check.
   // Avoid re-initializing the socket if we already logged in this session.
   if (currentUser) return;
 
   currentUser = session.user;
-  userEmailEl.textContent = email;
+  userEmailEl.textContent = session.user.email || "";
   loginScreen.style.display = "none";
   appScreen.style.display = "flex";
 
