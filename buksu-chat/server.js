@@ -164,6 +164,10 @@ const REACTIONS = ["\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDC4D", "\uD83D\uDE2E
 const MESSAGE_ID_MAX_LENGTH = 64;
 const REPLY_SNIPPET_MAX_LENGTH = 100;
 
+// Interests: up to 5 short lines of text per person, only ever shown to their match.
+const MAX_INTERESTS = 5;
+const INTEREST_MAX_LENGTH = 30;
+
 // In-memory waiting queue. Holds { socketId, college, course, matchSameCollege, mode }.
 let waitingQueue = [];
 
@@ -268,6 +272,41 @@ function buildMatchInfo(a, b) {
   };
 }
 
+// Cleans the interests a client sent: text only, one line each, at most 30 characters, no duplicates
+// (ignoring case), at most 5 in all. They end up in a chat line, so control and invisible
+// direction characters are removed as well.
+function cleanInterests(value) {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set();
+  const cleaned = [];
+
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+
+    const text = item
+      .replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, INTEREST_MAX_LENGTH)
+      .trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+
+    seen.add(key);
+    cleaned.push(text);
+    if (cleaned.length === MAX_INTERESTS) break;
+  }
+
+  return cleaned;
+}
+
+// Which of theirs are also in mine, ignoring case, written the way they wrote them.
+function sharedInterests(theirs, mine) {
+  const mineLower = new Set((mine || []).map((interest) => interest.toLowerCase()));
+  return (theirs || []).filter((interest) => mineLower.has(interest.toLowerCase()));
+}
+
 // True while two sockets are inside the avoid window after parting. Either side's record is enough.
 function isRecentPartner(idA, idB) {
   const now = Date.now();
@@ -325,14 +364,24 @@ function pairUp(socket, profile, entry) {
     initiator: true,
     mode: profile.mode,
     matchInfo,
-    partner: { college: entry.college, course: entry.course }
+    partner: {
+      college: entry.college,
+      course: entry.course,
+      interests: entry.interests || [],
+      sharedInterests: sharedInterests(entry.interests, profile.interests)
+    }
   });
   partnerSocket.emit("match-found", {
     roomId,
     initiator: false,
     mode: profile.mode,
     matchInfo,
-    partner: { college: profile.college, course: profile.course }
+    partner: {
+      college: profile.college,
+      course: profile.course,
+      interests: profile.interests || [],
+      sharedInterests: sharedInterests(profile.interests, entry.interests)
+    }
   });
 }
 
@@ -388,7 +437,9 @@ io.on("connection", (socket) => {
 
     if (!COLLEGES.includes(college)) return;
 
-    const profile = { college, course, matchSameCollege, mode };
+    const interests = cleanInterests(payload.interests);
+
+    const profile = { college, course, matchSameCollege, mode, interests };
 
     // Remove any stale entry for this socket first (e.g. re-clicking Find Match).
     waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);

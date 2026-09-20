@@ -114,7 +114,7 @@ const reportBtn = document.getElementById("report-btn");
 // ---------- What's new ----------
 // A small card at the top of Match Setup, shown once per update. To announce a new update, edit the
 // text in index.html and change this version: everyone who dismissed the old one sees it again.
-const WHATS_NEW_VERSION = "2026-09-20b";
+const WHATS_NEW_VERSION = "2026-09-21b";
 const WHATS_NEW_KEY = "buksu-whats-new-seen";
 const whatsNewCard = document.getElementById("whats-new");
 
@@ -574,7 +574,42 @@ const COLLEGE_NAMES = Object.fromEntries(
 
 // One single system line for a new match, instead of separate "you both..." and "stranger is
 // from..." lines that said the same thing twice.
+// The line about what the stranger likes. It only ever talks about the STRANGER's interests, or
+// about ones you share. Nothing is said about interests only you have.
+//   theirs only:   "Stranger likes Anime, Music."
+//   shared:        "You both like Basketball!"
+//   both:          "You both like Basketball! Stranger also likes Anime."
+function buildInterestLine(partner) {
+  const theirs = partner && Array.isArray(partner.interests) ? partner.interests : [];
+  if (!theirs.length) return null;
+
+  const shared = Array.isArray(partner.sharedInterests) ? partner.sharedInterests : [];
+  const sharedKeys = new Set(shared.map((interest) => interest.toLowerCase()));
+  const others = theirs.filter((interest) => !sharedKeys.has(interest.toLowerCase()));
+
+  const parts = [];
+  if (shared.length) {
+    const list = shared.length > 1 ? shared.slice(0, -1).join(", ") + " and " + shared[shared.length - 1] : shared[0];
+    parts.push("You both like " + list + "!");
+  }
+  if (others.length) {
+    parts.push((shared.length ? "Stranger also likes " : "Stranger likes ") + others.join(", ") + ".");
+  }
+  return parts.join(" ");
+}
+
+// The whole "connected" line: the college part as before, with the interest line after it. If there
+// is no college part (video chat between different colleges), the interest line gets its own "Connected!".
 function buildConnectedMessage(matchInfo, partner, mode) {
+  const college = buildCollegeMessage(matchInfo, partner, mode);
+  const interests = buildInterestLine(partner);
+
+  if (college && interests) return college + " " + interests;
+  if (college) return college;
+  return interests ? "Connected! " + interests : null;
+}
+
+function buildCollegeMessage(matchInfo, partner, mode) {
   const nameOf = (code) => COLLEGE_NAMES[code] || code;
   const info = matchInfo || {};
   const shared = info.college ? nameOf(info.college) : null;
@@ -710,6 +745,110 @@ try {
 } catch (err) {}
 applyFeedLayout(savedFeedLayout);
 
+// ---------- Interests (optional) ----------
+// Some tags to tap and a box for anything else, up to 5 in all. They are sent with Find Match, like
+// the course, and your match is told about them (never you). Nothing is saved on the server. The
+// browser only remembers your last choice, so you do not have to pick again.
+const INTEREST_TAGS = [
+  "Gaming", "Music", "Sports", "Basketball", "Anime", "Movies/TV",
+  "Reading", "Art", "Food", "Travel", "Tech/Coding", "Fitness"
+];
+const MAX_INTERESTS = 5;
+const INTEREST_MAX_CHARS = 30;
+const INTERESTS_KEY = "buksu-interests";
+const interestTagsEl = document.getElementById("interest-tags");
+const interestInput = document.getElementById("interest-input");
+const interestHint = document.getElementById("interest-hint");
+
+// One line of plain text: no line breaks or invisible characters, at most 30 characters.
+function cleanInterest(text) {
+  return String(text)
+    .replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, INTEREST_MAX_CHARS)
+    .trim();
+}
+
+function selectedInterests() {
+  return Array.from(interestTagsEl.querySelectorAll('.interest-chip[aria-pressed="true"]')).map((chip) => chip.textContent);
+}
+
+// At 5, the ones that are not chosen (and the box) are switched off, and a line says why.
+function refreshInterestLimit() {
+  const full = selectedInterests().length >= MAX_INTERESTS;
+  interestTagsEl.querySelectorAll(".interest-chip").forEach((chip) => {
+    chip.disabled = full && chip.getAttribute("aria-pressed") !== "true";
+  });
+  interestInput.disabled = full;
+  interestHint.textContent = full ? "That is 5, the most you can add. Tap one to remove it." : "";
+}
+
+function makeInterestChip(text, typed) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "interest-chip";
+  chip.textContent = text;
+  chip.setAttribute("aria-pressed", "false");
+  if (typed) chip.dataset.typed = "1";
+
+  chip.addEventListener("click", () => {
+    const turnOn = chip.getAttribute("aria-pressed") !== "true";
+    if (!turnOn && chip.dataset.typed) chip.remove(); // one you typed goes away when you tap it off
+    else chip.setAttribute("aria-pressed", String(turnOn));
+    refreshInterestLimit();
+  });
+  return chip;
+}
+
+INTEREST_TAGS.forEach((tag) => interestTagsEl.appendChild(makeInterestChip(tag, false)));
+
+// Something typed becomes a chip that is already chosen, or chooses the tag it matches (ignoring case).
+function addTypedInterest(raw) {
+  const text = cleanInterest(raw);
+  if (!text || selectedInterests().length >= MAX_INTERESTS) return;
+
+  const key = text.toLowerCase();
+  const existing = Array.from(interestTagsEl.querySelectorAll(".interest-chip")).find(
+    (chip) => chip.textContent.toLowerCase() === key
+  );
+
+  if (existing) {
+    existing.setAttribute("aria-pressed", "true");
+  } else {
+    const chip = makeInterestChip(text, true);
+    chip.setAttribute("aria-pressed", "true");
+    interestTagsEl.appendChild(chip);
+  }
+  refreshInterestLimit();
+}
+
+// Enter or a comma adds what is typed. So does leaving the box, or pressing Find Match.
+function commitTypedInterests() {
+  interestInput.value.split(",").forEach(addTypedInterest);
+  interestInput.value = "";
+}
+
+interestInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === ",") {
+    e.preventDefault();
+    commitTypedInterests();
+  }
+});
+interestInput.addEventListener("blur", commitTypedInterests);
+
+function saveInterests(interests) {
+  try {
+    localStorage.setItem(INTERESTS_KEY, JSON.stringify(interests));
+  } catch (err) {}
+}
+
+try {
+  const saved = JSON.parse(localStorage.getItem(INTERESTS_KEY) || "[]");
+  if (Array.isArray(saved)) saved.slice(0, MAX_INTERESTS).forEach(addTypedInterest);
+} catch (err) {}
+refreshInterestLimit();
+
 // ---------- Matchmaking controls ----------
 // Video + Text starts with a "Get ready" step: your own camera with the mic and camera switches, so you
 // can check yourself before a stranger can see you. Nothing is sent to the server until you press
@@ -720,11 +859,16 @@ findBtn.addEventListener("click", async () => {
   const college = collegeSelect.value;
   if (!college) return;
 
+  commitTypedInterests(); // anything typed but not yet added still counts
+  const interests = selectedInterests();
+  saveInterests(interests);
+
   const profile = {
     college,
     course: courseInput.value.trim(),
     matchSameCollege: sameCollegeCheckbox.checked,
-    mode: getSelectedMode()
+    mode: getSelectedMode(),
+    interests
   };
 
   if (profile.mode === "video") await enterReadyStep(profile);

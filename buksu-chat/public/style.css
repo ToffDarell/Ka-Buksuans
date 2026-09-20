@@ -741,6 +741,55 @@ input[type="text"]:focus-visible,
   transform: scale(1);
 }
 
+/* ----- Interests: plain text chips you can tap on and off (several at once) ----- */
+.interest-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.interest-chip {
+  min-height: 30px;
+  padding: 0 10px;
+  background: var(--navy-raised);
+  color: var(--vinyl);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1.5px var(--rule);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.interest-chip[aria-pressed="true"] {
+  background: var(--chip);
+  color: var(--chip-ink);
+  box-shadow: none;
+}
+
+.interest-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.interest-chip:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.interest-hint {
+  color: var(--vinyl-dim);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.interest-hint:empty {
+  display: none;
+}
+
 .mode-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1555,23 +1604,31 @@ input[type="text"]:focus-visible,
   line-height: 1.4;
 }
 
+/* A navy mat around the camera picture. The picture sits inside it with a margin, so nothing is flush
+   against the frame. */
 .ready-preview {
-  position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  max-height: min(46vh, 400px);
-  max-height: min(46dvh, 400px);
-  overflow: hidden;
-  background: #000;
-  border: 4px solid var(--navy);
+  padding: 8px;
+  background: var(--navy);
   border-radius: 6px;
 }
 
-.ready-preview video {
+.ready-screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: min(44vh, 400px);
+  max-height: min(44dvh, 400px);
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.ready-screen video {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  background: #000;
 }
 
 .ready-actions {
@@ -2472,7 +2529,7 @@ input[type="text"]:focus-visible,
     display: contents;
   }
 
-  .lobby-side fieldset {
+  .lobby-side fieldset:has(.mode-toggle) {
     order: -1;
   }
 
