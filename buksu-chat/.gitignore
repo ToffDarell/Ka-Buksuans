@@ -4,3 +4,4 @@ node_modules/
 .impeccable/
 
 
+.playwright-mcp/
