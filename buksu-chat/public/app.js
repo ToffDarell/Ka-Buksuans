@@ -108,7 +108,7 @@ const reportBtn = document.getElementById("report-btn");
 // ---------- What's new ----------
 // A small card at the top of Match Setup, shown once per update. To announce a new update, edit the
 // text in index.html and change this version: everyone who dismissed the old one sees it again.
-const WHATS_NEW_VERSION = "2026-09-20";
+const WHATS_NEW_VERSION = "2026-09-20b";
 const WHATS_NEW_KEY = "buksu-whats-new-seen";
 const whatsNewCard = document.getElementById("whats-new");
 
@@ -384,6 +384,7 @@ function initSocket() {
   socket.on("match-found", async ({ roomId, initiator, partner, mode, matchInfo }) => {
     searchingForMatch = false;
     clearDisconnectNotice();
+    resetChat(); // a conversation kept on screen after a disconnect ends here
     currentRoomId = roomId;
     isInitiator = initiator;
     if (partner) showBadge(remoteBadge, partner.college, partner.course);
@@ -416,9 +417,9 @@ function initSocket() {
       .catch((err) => console.error("[RTC] Signal handling error:", err));
   });
 
-  socket.on("chat-message", (message, messageId) => {
+  socket.on("chat-message", (message, messageId, reply) => {
     hideTypingIndicator(); // their message has arrived, so they are no longer "typing"
-    appendChatMessage("Stranger", message, messageId);
+    appendChatMessage("Stranger", message, messageId, reply);
   });
 
   socket.on("typing", showTypingIndicator);
@@ -446,8 +447,10 @@ function initSocket() {
     }
 
     socket.emit("leave-room"); // clears the finished room on the server
-    searchAgain();
-    appendDisconnectNote();
+    // The conversation stays on screen and "Stranger disconnected" is added to the end of it, like
+    // any other message. The chat clears when the next match starts, or on Next or Stop.
+    searchAgain({ keepChat: true });
+    appendSystemMessage("Stranger disconnected", "danger");
     showDisconnectNotice();
   });
 
@@ -740,8 +743,8 @@ findBtn.addEventListener("click", async () => {
 const FIND_MATCH_RETRY_MS = 1100;
 
 // Drops the current chat and goes back to searching with the same college and course.
-function searchAgain() {
-  cleanupPeerOnly();
+function searchAgain({ keepChat = false } = {}) {
+  cleanupPeerOnly({ keepChat });
   setStatus("waiting", "Searching for a match...");
   remotePlaceholderText.textContent = "Searching for a match...";
   searchingForMatch = true;
@@ -1290,7 +1293,7 @@ async function handleSignal(data) {
   }
 }
 
-function cleanupPeerOnly() {
+function cleanupPeerOnly({ keepChat = false } = {}) {
   // Next, Stop or a disconnect: there is no one to report until the next match.
   reportBtn.style.display = "none";
 
@@ -1312,7 +1315,15 @@ function cleanupPeerOnly() {
   tapToPlayBtn.hidden = true;
   remotePlaceholder.classList.remove("hidden");
   hideBadge(remoteBadge);
-  resetChat();
+
+  if (keepChat) {
+    // The messages stay, but nothing can be reacted to, replied to or typed about any more.
+    closeReactionPicker();
+    cancelReply();
+    resetTypingState();
+  } else {
+    resetChat();
+  }
 }
 
 function cleanupCall() {
@@ -1349,42 +1360,38 @@ function sendChatMessage() {
   if (!message || !currentRoomId) return;
 
   const messageId = newMessageId();
-  socket.emit("chat-message", { roomId: currentRoomId, message, messageId });
-  appendChatMessage("You", message, messageId);
+  const reply = currentReply(); // null unless a reply is being written
+  socket.emit("chat-message", {
+    roomId: currentRoomId,
+    message,
+    messageId,
+    replyToMessageId: reply ? reply.messageId : undefined,
+    replySnippet: reply ? reply.snippet : undefined
+  });
+  appendChatMessage("You", message, messageId, reply || undefined);
   chatInput.value = "";
+  cancelReply(); // sent, so the reply bar goes away
   stopTyping(); // sent, so no longer typing
 }
 
-function appendChatMessage(sender, message, messageId) {
+function appendChatMessage(sender, message, messageId, reply) {
   const p = document.createElement("p");
   p.className = sender === "You" ? "msg-you" : "msg-stranger";
-  p.textContent = message;
+
+  // A reply shows a small quote of the original above the message text.
+  const quote = reply ? buildReplyQuote(reply) : null;
+  if (quote) p.appendChild(quote);
+  p.appendChild(document.createTextNode(message));
 
   // Only messages with a usable id can be reacted to. An id that is already taken (a stranger
   // reusing one of ours) is ignored, so nobody can hijack another message's reactions.
   if (typeof messageId === "string" && messageId && messageId.length <= 64 && !chatMessages.has(messageId)) {
     p.dataset.messageId = messageId;
     p.tabIndex = 0;
-    chatMessages.set(messageId, { el: p, mine: null, theirs: null });
+    chatMessages.set(messageId, { el: p, sender: sender === "You" ? "You" : "Stranger", text: message, mine: null, theirs: null });
   }
 
   chatBox.appendChild(p);
-  scrollChatToEnd();
-}
-
-// A distinct note in the chat (its own background and red outline) so a disconnect cannot be
-// mistaken for part of the conversation. It only reports what happened. "Searching..." is owned
-// by the status bar (Text Only) or the stranger's video box (video), never by this note.
-function appendDisconnectNote() {
-  const note = document.createElement("div");
-  note.className = "disconnect-note";
-  note.setAttribute("role", "status");
-
-  const title = document.createElement("strong");
-  title.textContent = "Stranger disconnected";
-
-  note.append(title);
-  chatBox.appendChild(note);
   scrollChatToEnd();
 }
 
@@ -1403,9 +1410,11 @@ function clearDisconnectNotice() {
   disconnectNoticeTimer = null;
 }
 
-function appendSystemMessage(message) {
+// Centred, plain lines in the flow of the chat. "danger" makes one red (a disconnect); the default
+// is the soft blue used for "Connected!".
+function appendSystemMessage(message, tone) {
   const p = document.createElement("p");
-  p.className = "msg-system";
+  p.className = tone === "danger" ? "msg-system msg-system-danger" : "msg-system";
   p.textContent = message;
   chatBox.appendChild(p);
   scrollChatToEnd();
@@ -1591,6 +1600,7 @@ function bubbleOf(node) {
 
 function openReactionPicker(bubble) {
   clearTimeout(pickerHideTimer);
+  if (!currentRoomId) return; // the chat is over (the stranger left), so no more reactions or replies
   const record = chatMessages.get(bubble.dataset.messageId);
   if (!record) return;
 
@@ -1600,6 +1610,12 @@ function openReactionPicker(bubble) {
   });
 
   reactionPicker.hidden = false;
+  positionReactionPicker(bubble);
+}
+
+// Puts the picker next to its message. Called when it opens and again whenever the chat scrolls.
+function positionReactionPicker(bubble) {
+  replyButton.hidden = false;
   const card = chatCard.getBoundingClientRect();
   const box = chatBox.getBoundingClientRect();
   const rect = bubble.getBoundingClientRect();
@@ -1617,11 +1633,22 @@ function openReactionPicker(bubble) {
 
   reactionPicker.style.top = top + "px";
   reactionPicker.style.left = left + "px";
+
+  // The reply button sits beside the bubble, on the side away from the screen edge it is aligned
+  // to: left of your own messages, right of the stranger's. It is centred on the bubble.
+  const size = replyButton.offsetWidth || 32;
+  let replyLeft = bubble.classList.contains("msg-you") ? rect.left - card.left - size - 6 : rect.right - card.left + 6;
+  replyLeft = Math.max(6, Math.min(replyLeft, card.width - size - 6));
+  let replyTop = rect.top - card.top + (rect.height - size) / 2;
+  replyTop = Math.max(box.top - card.top, Math.min(replyTop, box.bottom - card.top - size));
+  replyButton.style.top = replyTop + "px";
+  replyButton.style.left = replyLeft + "px";
 }
 
 function closeReactionPicker() {
   clearTimeout(pickerHideTimer);
   reactionPicker.hidden = true;
+  replyButton.hidden = true;
   pickerTarget = null;
 }
 
@@ -1676,7 +1703,119 @@ reactionPicker.addEventListener("keydown", (e) => {
   closeReactionPicker();
   if (record) record.el.focus();
 });
-chatBox.addEventListener("scroll", closeReactionPicker);
+// The chat also scrolls by itself (a new message, the "typing" line coming and going). That must not
+// close the picker, so it follows its message instead. It only closes once that message has
+// scrolled out of view.
+chatBox.addEventListener("scroll", () => {
+  if (reactionPicker.hidden) return;
+  const record = chatMessages.get(pickerTarget);
+  if (!record) {
+    closeReactionPicker();
+    return;
+  }
+
+  const box = chatBox.getBoundingClientRect();
+  const rect = record.el.getBoundingClientRect();
+  if (rect.bottom < box.top || rect.top > box.bottom) closeReactionPicker();
+  else positionReactionPicker(record.el);
+});
+
+// ---------- Reply to a message ----------
+// The reply button appears with the reaction picker (hover on desktop, tap on a phone). Pressing it
+// puts a preview above the input; the next message sent carries a reference to that message and
+// shows a small quote of it. Like everything else in the chat, it lives only until the chat clears.
+const REPLY_SNIPPET_CHARS = 100;
+const REPLY_PREVIEW_CHARS = 60;
+const REPLY_QUOTE_CHARS = 80;
+
+const replyPreview = document.getElementById("reply-preview");
+const replyPreviewTitle = document.getElementById("reply-preview-title");
+const replyPreviewText = document.getElementById("reply-preview-text");
+let replyTarget = null; // id of the message being replied to
+
+const replyButton = document.createElement("button");
+replyButton.type = "button";
+replyButton.className = "reply-btn";
+replyButton.setAttribute("aria-label", "Reply to this message");
+replyButton.title = "Reply";
+replyButton.hidden = true;
+(() => {
+  const ns = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(ns, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  const arrow = document.createElementNS(ns, "path");
+  arrow.setAttribute("d", "M9 14 4 9l5-5");
+  const curve = document.createElementNS(ns, "path");
+  curve.setAttribute("d", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11");
+  icon.append(arrow, curve);
+  replyButton.appendChild(icon);
+})();
+chatCard.appendChild(replyButton);
+
+// One line of plain text, cut to a length with an ellipsis.
+function shorten(text, max) {
+  const flat = String(text).replace(/\s+/g, " ").trim();
+  return flat.length > max ? flat.slice(0, max).trimEnd() + "\u2026" : flat;
+}
+
+function startReply(messageId) {
+  const record = chatMessages.get(messageId);
+  if (!record) return;
+
+  replyTarget = messageId;
+  replyPreviewTitle.textContent = record.sender === "You" ? "Replying to yourself" : "Replying to Stranger";
+  replyPreviewText.textContent = shorten(record.text, REPLY_PREVIEW_CHARS);
+  replyPreview.hidden = false;
+  chatInput.focus();
+}
+
+function cancelReply() {
+  replyTarget = null;
+  replyPreview.hidden = true;
+  replyPreviewText.textContent = "";
+}
+
+// The reply to attach to the message being sent, or null. The original must still be in this chat.
+function currentReply() {
+  const record = replyTarget ? chatMessages.get(replyTarget) : null;
+  return record ? { messageId: replyTarget, snippet: shorten(record.text, REPLY_SNIPPET_CHARS) } : null;
+}
+
+// The quote shown above a reply. It uses this browser's own copy of the original message when there
+// is one, so a stranger cannot make up what "you said". Only if the original is unknown does it
+// fall back to the snippet that came with the message.
+function buildReplyQuote(reply) {
+  const original = chatMessages.get(reply.messageId);
+  const who = original ? original.sender : "Stranger";
+  const text = original ? original.text : String(reply.snippet || "");
+  if (!text) return null;
+
+  const quote = document.createElement("span");
+  quote.className = "reply-quote";
+  const name = document.createElement("strong");
+  name.textContent = who;
+  const body = document.createElement("span");
+  body.textContent = shorten(text, REPLY_QUOTE_CHARS);
+  quote.append(name, body);
+  return quote;
+}
+
+replyButton.addEventListener("click", () => {
+  if (pickerTarget) startReply(pickerTarget);
+  closeReactionPicker();
+});
+replyButton.addEventListener("mouseenter", () => clearTimeout(pickerHideTimer));
+replyButton.addEventListener("mouseleave", () => {
+  if (canHoverQuery.matches) scheduleCloseReactionPicker();
+});
+document.getElementById("reply-cancel").addEventListener("click", () => {
+  cancelReply();
+  chatInput.focus();
+});
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && replyTarget) cancelReply();
+});
 
 // Once someone taps the X on the rules note, it stays hidden for good (on this device).
 const HIDE_RULES_KEY = "buksu-hide-chat-rules";
@@ -1694,6 +1833,7 @@ function resetChat() {
   // The messages are going, so their reactions and the open picker go with them.
   chatMessages.clear();
   closeReactionPicker();
+  cancelReply();
   resetTypingState();
 
   if (rulesAreHidden()) {

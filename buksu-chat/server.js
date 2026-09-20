@@ -162,6 +162,7 @@ const CHAT_MODES = ["video", "text"];
 // Message reactions: a small fixed set (heart, laugh, thumbs up, wow, sad).
 const REACTIONS = ["\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDC4D", "\uD83D\uDE2E", "\uD83D\uDE22"];
 const MESSAGE_ID_MAX_LENGTH = 64;
+const REPLY_SNIPPET_MAX_LENGTH = 100;
 
 // In-memory waiting queue. Holds { socketId, college, course, matchSameCollege, mode }.
 let waitingQueue = [];
@@ -349,7 +350,7 @@ io.on("connection", (socket) => {
 
   // Text chat relay
   socket.on("chat-message", (payload) => {
-    const { roomId, message, messageId } = payload || {};
+    const { roomId, message, messageId, replyToMessageId, replySnippet } = payload || {};
     if (!roomId || !socket.rooms.has(roomId)) return;
 
     if (isChatRateLimited(socket.id)) {
@@ -364,7 +365,17 @@ io.on("connection", (socket) => {
       typeof messageId === "string" && messageId.length > 0 && messageId.length <= MESSAGE_ID_MAX_LENGTH
         ? messageId
         : undefined;
-    socket.to(roomId).emit("chat-message", trimmedMessage, safeMessageId);
+    // A reply names the message it answers and carries a short snippet of it. Both are checked and
+    // cut down here. The receiving client uses its own copy of the original when it has one, and
+    // only falls back to the snippet. Clients that do not know about replies ignore the extra argument.
+    const reply =
+      typeof replyToMessageId === "string" && replyToMessageId.length > 0 && replyToMessageId.length <= MESSAGE_ID_MAX_LENGTH
+        ? {
+            messageId: replyToMessageId,
+            snippet: typeof replySnippet === "string" ? replySnippet.slice(0, REPLY_SNIPPET_MAX_LENGTH) : ""
+          }
+        : undefined;
+    socket.to(roomId).emit("chat-message", trimmedMessage, safeMessageId, reply);
   });
 
   // "typing" and "stop-typing": relayed to the other person only. Nothing is stored, and the client

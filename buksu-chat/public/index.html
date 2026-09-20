@@ -202,7 +202,7 @@
     </header>
 
     <section id="whats-new" class="board whats-new" aria-label="What's new" hidden>
-      <p class="whats-new-text"><strong>What's new:</strong> react to messages with an emoji (hover on a computer, tap on a phone), see when the stranger is typing, switch your mic and camera off in a video chat, and get matched again automatically when a stranger leaves. The College of Public Administration and Governance (CPAG) is now on the list.</p>
+      <p class="whats-new-text"><strong>What's new:</strong> react to a message with an emoji or reply to a specific one (hover on a computer, tap on a phone), see when the stranger is typing, switch your mic and camera off in a video chat, and get matched again automatically when a stranger leaves. The College of Public Administration and Governance (CPAG) is now on the list.</p>
       <button id="whats-new-close" class="plate-btn" type="button">Got it</button>
     </section>
 
@@ -347,6 +347,13 @@
 
       <div id="chat-container" class="board chat">
         <div id="chat-box" aria-live="polite"></div>
+        <div id="reply-preview" class="reply-preview" hidden>
+          <div class="reply-preview-text">
+            <strong id="reply-preview-title"></strong>
+            <span id="reply-preview-text"></span>
+          </div>
+          <button id="reply-cancel" class="reply-cancel" type="button" aria-label="Cancel reply">&#10005;</button>
+        </div>
         <div id="chat-input-row">
           <input id="chat-input" placeholder="Type a message..." aria-label="Message" autocomplete="off" disabled>
           <button id="send-btn" disabled class="plate-btn primary" type="button" aria-label="Send">
