@@ -105,66 +105,6 @@ const nextBtn = document.getElementById("next-btn");
 const stopBtn = document.getElementById("stop-btn");
 const reportBtn = document.getElementById("report-btn");
 
-// ---------- What's new ----------
-// A small card at the top of Match Setup, shown once per update. To announce a new update, edit the
-// text in index.html and change this version: everyone who dismissed the old one sees it again.
-const WHATS_NEW_VERSION = "2026-09-20";
-const WHATS_NEW_KEY = "buksu-whats-new-seen";
-const whatsNewCard = document.getElementById("whats-new");
-
-function showWhatsNew() {
-  let seen = null;
-  try {
-    seen = localStorage.getItem(WHATS_NEW_KEY);
-  } catch (err) {}
-  whatsNewCard.hidden = seen === WHATS_NEW_VERSION;
-}
-
-document.getElementById("whats-new-close").addEventListener("click", () => {
-  whatsNewCard.hidden = true;
-  try {
-    localStorage.setItem(WHATS_NEW_KEY, WHATS_NEW_VERSION);
-  } catch (err) {}
-});
-
-// ---------- Online count ----------
-// Shown on the login page and on Match Setup, both in the same format. Before sign-in it is one
-// plain HTTP request; after sign-in the socket keeps it live (see initSocket).
-const onlineCountEls = document.querySelectorAll(".online-count");
-
-function setOnlineCount(count) {
-  const known = Number.isFinite(count) && count >= 0;
-  onlineCountEls.forEach((el) => {
-    el.hidden = !known;
-    if (known) {
-      el.querySelector(".online-text").textContent =
-        count.toLocaleString() + (count === 1 ? " Ka-Buksuan" : " Ka-Buksuans") + " online now";
-    }
-  });
-}
-
-fetch("/active-users-count")
-  .then((res) => (res.ok ? res.json() : Promise.reject(new Error("bad status"))))
-  .then((data) => setOnlineCount(Number(data.count)))
-  .catch(() => {}); // no number is better than a wrong one, so it just stays hidden
-
-// Before sign-in there is no authenticated socket, so the login page listens on a small public one
-// that carries only this number. That keeps it live while someone reads the page. Once they sign
-// in, the main socket takes over (see initSocket) and this one is closed.
-let publicCountSocket = null;
-if (typeof io === "function") {
-  publicCountSocket = io("/online");
-  publicCountSocket.on("active-users-count", (count) => setOnlineCount(Number(count)));
-  publicCountSocket.on("disconnect", () => setOnlineCount(NaN));
-}
-
-function closePublicCountSocket() {
-  if (!publicCountSocket) return;
-  publicCountSocket.removeAllListeners(); // closing it must not blank the number
-  publicCountSocket.close();
-  publicCountSocket = null;
-}
-
 const chatBox = document.getElementById("chat-box");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
@@ -183,11 +123,6 @@ let peerConnection = null;
 let currentRoomId = null;
 let isInitiator = false;
 let currentProfile = null;
-// True from the moment we ask for a match until one is found (or the user stops).
-let searchingForMatch = false;
-// While set, the stranger's video box says "Stranger disconnected" instead of "Searching...".
-let disconnectNoticeTimer = null;
-const DISCONNECT_NOTICE_MS = 2000;
 
 // WebRTC session state (reset for every new peer connection).
 let pendingRemoteCandidates = [];
@@ -326,7 +261,6 @@ async function handleSession(session) {
   currentUser = session.user;
   loginScreen.style.display = "none";
   appScreen.style.display = "flex";
-  showWhatsNew();
 
   showAlert(COMMUNITY_GUIDELINES, "Community Guidelines");
 
@@ -345,7 +279,6 @@ supabaseClient.auth.getSession().then(({ data: { session } }) => {
 
 // ---------- Socket.io setup ----------
 function initSocket() {
-  closePublicCountSocket();
   socket = io({
     // A function (not a plain object) so socket.io re-reads the current
     // Supabase session on every connect/reconnect, picking up a refreshed
@@ -370,20 +303,12 @@ function initSocket() {
     location.reload();
   });
 
-  // Live count of people online, sent on every connect and disconnect. When our own connection
-  // drops the number is unknown, so it is hidden until we are back.
-  socket.on("active-users-count", (count) => setOnlineCount(Number(count)));
-  socket.on("disconnect", () => setOnlineCount(NaN));
-
   socket.on("waiting", () => {
     setStatus("waiting", "Searching for a match...");
-    // Let "Stranger disconnected" stay readable for a moment before this text replaces it.
-    if (disconnectNoticeTimer === null) remotePlaceholderText.textContent = "Searching for a match...";
+    remotePlaceholderText.textContent = "Searching for a match...";
   });
 
   socket.on("match-found", async ({ roomId, initiator, partner, mode, matchInfo }) => {
-    searchingForMatch = false;
-    clearDisconnectNotice();
     currentRoomId = roomId;
     isInitiator = initiator;
     if (partner) showBadge(remoteBadge, partner.college, partner.course);
@@ -401,7 +326,6 @@ function initSocket() {
       videoContainer.style.display = "flex";
       setStatus("waiting", "Matched! Connecting...");
       remotePlaceholderText.textContent = "Connecting...";
-      sendMediaState(); // a new stranger has to learn if you are already muted or have your camera off
       peerReady = startPeerConnection();
       await peerReady;
     }
@@ -416,53 +340,21 @@ function initSocket() {
       .catch((err) => console.error("[RTC] Signal handling error:", err));
   });
 
-  socket.on("chat-message", (message, messageId) => {
-    hideTypingIndicator(); // their message has arrived, so they are no longer "typing"
-    appendChatMessage("Stranger", message, messageId);
+  socket.on("chat-message", (message) => {
+    appendChatMessage("Stranger", message);
   });
 
-  socket.on("typing", showTypingIndicator);
-  socket.on("stop-typing", hideTypingIndicator);
-
-  socket.on("message-reaction", (payload) => {
-    const { messageId, emoji } = payload || {};
-    setReaction(messageId, "theirs", emoji === undefined ? null : emoji);
-  });
-
-  socket.on("media-state", ({ mic, cam } = {}) => {
-    remoteMicMuted = mic === false;
-    remoteCamOff = cam === false;
-    applyRemoteMediaState();
-  });
-
-  // The stranger pressed Next, Stop or lost connection. Nobody should be left staring at a dead
-  // chat, so go straight back to searching, as if this person had pressed Next themselves.
   socket.on("partner-left", () => {
-    if (!currentProfile) {
-      setStatus("ended", "Stranger disconnected.");
-      appendSystemMessage("Stranger has disconnected.");
-      cleanupCall();
-      return;
-    }
-
-    socket.emit("leave-room"); // clears the finished room on the server
-    searchAgain();
-    appendDisconnectNote();
-    showDisconnectNotice();
+    setStatus("ended", "Stranger disconnected.");
+    appendSystemMessage("Stranger has disconnected.");
+    cleanupCall();
   });
 
   socket.on("rate-limited", ({ context } = {}) => {
     if (context === "chat-message") {
       appendSystemMessage("You're sending messages too fast. Slow down a bit.");
     }
-
-    // A match request that came too soon after the last one (for example the stranger left right
-    // after connecting) is not queued by the server, so ask again once the cooldown is over.
-    if (context === "find-match" && searchingForMatch) {
-      setTimeout(() => {
-        if (searchingForMatch && currentProfile) socket.emit("find-match", currentProfile);
-      }, FIND_MATCH_RETRY_MS);
-    }
+    // find-match rate limits (accidental double-clicks) are ignored silently.
   });
 }
 
@@ -679,13 +571,8 @@ function togglePipSelf() {
   pipSelf.setAttribute("aria-label", hidden ? "Show your camera" : "Hide your camera");
 }
 
-// The mic and camera buttons sit inside this window, so their taps must not also hide it.
-pipSelf.addEventListener("click", (e) => {
-  if (e.target.closest(".media-toggles")) return;
-  togglePipSelf();
-});
+pipSelf.addEventListener("click", togglePipSelf);
 pipSelf.addEventListener("keydown", (e) => {
-  if (e.target !== pipSelf) return;
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     togglePipSelf();
@@ -728,7 +615,6 @@ findBtn.addEventListener("click", async () => {
   currentProfile = { college, course, matchSameCollege, mode };
   showBadge(localBadge, college, course);
 
-  searchingForMatch = true;
   socket.emit("find-match", currentProfile);
   lobbyPanel.style.display = "none";
   appScreen.classList.add("in-call");
@@ -736,25 +622,15 @@ findBtn.addEventListener("click", async () => {
   stopBtn.style.display = "";
 });
 
-// A little longer than the server's one-second find-match cooldown.
-const FIND_MATCH_RETRY_MS = 1100;
-
-// Drops the current chat and goes back to searching with the same college and course.
-function searchAgain() {
+nextBtn.addEventListener("click", async () => {
+  socket.emit("leave-room");
   cleanupPeerOnly();
   setStatus("waiting", "Searching for a match...");
   remotePlaceholderText.textContent = "Searching for a match...";
-  searchingForMatch = true;
   socket.emit("find-match", currentProfile);
-}
-
-nextBtn.addEventListener("click", () => {
-  socket.emit("leave-room");
-  searchAgain();
 });
 
 stopBtn.addEventListener("click", () => {
-  searchingForMatch = false;
   socket.emit("leave-room");
   cleanupCall();
   setStatus(null, "Not connected");
@@ -807,79 +683,6 @@ async function getLocalMedia() {
   localVideo.srcObject = localStream;
   localVideo.play().catch((err) => console.warn("[RTC] localVideo.play() rejected:", err.name));
   localPlaceholder.classList.add("hidden");
-  applyMediaState();
-}
-
-// ---------- Mic and camera switches ----------
-// Switching a track off (track.enabled = false) keeps the connection as it is: the stranger just
-// hears silence or sees a black picture, so nothing has to be renegotiated.
-const micBtn = document.getElementById("mic-btn");
-const camBtn = document.getElementById("cam-btn");
-let micMuted = false;
-let camOff = false;
-
-function applyMediaState() {
-  const audioTracks = localStream ? localStream.getAudioTracks() : [];
-  const videoTracks = localStream ? localStream.getVideoTracks() : [];
-
-  audioTracks.forEach((track) => (track.enabled = !micMuted));
-  videoTracks.forEach((track) => (track.enabled = !camOff));
-
-  // Your own tile shows its "Camera off" card while the camera is switched off.
-  if (videoTracks.length) localPlaceholder.classList.toggle("hidden", !camOff);
-
-  micBtn.disabled = !audioTracks.length;
-  camBtn.disabled = !videoTracks.length;
-
-  const micLabel = micMuted ? "Unmute microphone" : "Mute microphone";
-  const camLabel = camOff ? "Turn camera on" : "Turn camera off";
-  micBtn.classList.toggle("is-off", micMuted);
-  camBtn.classList.toggle("is-off", camOff);
-  micBtn.setAttribute("aria-label", micLabel);
-  micBtn.title = micLabel;
-  camBtn.setAttribute("aria-label", camLabel);
-  camBtn.title = camLabel;
-}
-
-// Tells the stranger's browser, so their screen shows "camera off" / a muted mark, on any device.
-function sendMediaState() {
-  if (!currentRoomId) return;
-  socket.emit("media-state", { roomId: currentRoomId, mic: !micMuted, cam: !camOff });
-}
-
-micBtn.addEventListener("click", () => {
-  micMuted = !micMuted;
-  applyMediaState();
-  sendMediaState();
-});
-
-camBtn.addEventListener("click", () => {
-  camOff = !camOff;
-  applyMediaState();
-  sendMediaState();
-});
-
-// What the stranger has switched off, as they told us.
-const remoteMicOffMark = document.getElementById("remote-mic-off");
-let remoteMicMuted = false;
-let remoteCamOff = false;
-
-function applyRemoteMediaState() {
-  remoteMicOffMark.hidden = !remoteMicMuted;
-
-  if (remoteCamOff) {
-    remotePlaceholderText.textContent = "Stranger turned their camera off";
-    remotePlaceholder.classList.remove("hidden");
-  } else if (connStatus === "connected") {
-    remotePlaceholderText.textContent = "Connected — waiting for video...";
-    updateRemotePlaceholder(); // hides the card again once real video frames are showing
-  }
-}
-
-function resetRemoteMediaState() {
-  remoteMicMuted = false;
-  remoteCamOff = false;
-  remoteMicOffMark.hidden = true;
 }
 
 function candidateType(candidate) {
@@ -923,7 +726,7 @@ remoteVideo.addEventListener("loadedmetadata", () => {
 // once the connection is really up AND real video frames are on screen.
 function updateRemotePlaceholder() {
   const hasRealVideo = remoteVideo.videoWidth > 2 && !remoteVideo.paused;
-  if (connStatus === "connected" && hasRealVideo && !remoteCamOff) {
+  if (connStatus === "connected" && hasRealVideo) {
     remotePlaceholder.classList.add("hidden");
   }
 }
@@ -1294,9 +1097,6 @@ function cleanupPeerOnly() {
   // Next, Stop or a disconnect: there is no one to report until the next match.
   reportBtn.style.display = "none";
 
-  currentRoomId = null; // nothing to type into until the next match
-  clearDisconnectNotice();
-  resetRemoteMediaState();
   peerGeneration += 1;
   clearTimeout(disconnectTimer);
   clearTimeout(connectTimer);
@@ -1322,9 +1122,6 @@ function cleanupCall() {
     localStream = null;
   }
   localVideo.srcObject = null;
-  micMuted = false;
-  camOff = false;
-  applyMediaState();
   localPlaceholder.classList.remove("hidden");
   hideBadge(localBadge);
   remotePlaceholderText.textContent = "Not connected yet";
@@ -1342,65 +1139,22 @@ sendBtn.addEventListener("click", sendChatMessage);
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendChatMessage();
 });
-chatInput.addEventListener("input", handleTypingInput);
 
 function sendChatMessage() {
   const message = chatInput.value.trim();
   if (!message || !currentRoomId) return;
 
-  const messageId = newMessageId();
-  socket.emit("chat-message", { roomId: currentRoomId, message, messageId });
-  appendChatMessage("You", message, messageId);
+  socket.emit("chat-message", { roomId: currentRoomId, message });
+  appendChatMessage("You", message);
   chatInput.value = "";
-  stopTyping(); // sent, so no longer typing
 }
 
-function appendChatMessage(sender, message, messageId) {
+function appendChatMessage(sender, message) {
   const p = document.createElement("p");
   p.className = sender === "You" ? "msg-you" : "msg-stranger";
   p.textContent = message;
-
-  // Only messages with a usable id can be reacted to. An id that is already taken (a stranger
-  // reusing one of ours) is ignored, so nobody can hijack another message's reactions.
-  if (typeof messageId === "string" && messageId && messageId.length <= 64 && !chatMessages.has(messageId)) {
-    p.dataset.messageId = messageId;
-    p.tabIndex = 0;
-    chatMessages.set(messageId, { el: p, mine: null, theirs: null });
-  }
-
   chatBox.appendChild(p);
   scrollChatToEnd();
-}
-
-// A distinct note in the chat (its own background and red outline) so a disconnect cannot be
-// mistaken for part of the conversation. It only reports what happened. "Searching..." is owned
-// by the status bar (Text Only) or the stranger's video box (video), never by this note.
-function appendDisconnectNote() {
-  const note = document.createElement("div");
-  note.className = "disconnect-note";
-  note.setAttribute("role", "status");
-
-  const title = document.createElement("strong");
-  title.textContent = "Stranger disconnected";
-
-  note.append(title);
-  chatBox.appendChild(note);
-  scrollChatToEnd();
-}
-
-// The stranger's video box says "Stranger disconnected" for a moment, then goes back to searching.
-function showDisconnectNotice() {
-  clearTimeout(disconnectNoticeTimer);
-  remotePlaceholderText.textContent = "Stranger disconnected";
-  disconnectNoticeTimer = setTimeout(() => {
-    disconnectNoticeTimer = null;
-    if (searchingForMatch) remotePlaceholderText.textContent = "Searching for a match...";
-  }, DISCONNECT_NOTICE_MS);
-}
-
-function clearDisconnectNotice() {
-  clearTimeout(disconnectNoticeTimer);
-  disconnectNoticeTimer = null;
 }
 
 function appendSystemMessage(message) {
@@ -1418,266 +1172,6 @@ function scrollChatToEnd() {
   chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: reduceMotionQuery.matches ? "auto" : "smooth" });
 }
 
-// ---------- Typing indicator ----------
-// What I send: "typing" at most once every 2 seconds while I type, "stop-typing" after 2.5 seconds
-// of quiet, when the box is emptied, or the moment I send. Nothing is sent outside a chat.
-const TYPING_THROTTLE_MS = 2000;
-const TYPING_IDLE_MS = 2500;
-let lastTypingSentAt = 0;
-let typingIdleTimer = null;
-let typingAnnounced = false;
-
-function handleTypingInput() {
-  if (!currentRoomId) return;
-
-  if (!chatInput.value.trim()) {
-    stopTyping(); // the box was emptied
-    return;
-  }
-
-  const now = Date.now();
-  if (now - lastTypingSentAt >= TYPING_THROTTLE_MS) {
-    socket.emit("typing", { roomId: currentRoomId });
-    lastTypingSentAt = now;
-    typingAnnounced = true;
-  }
-
-  clearTimeout(typingIdleTimer);
-  typingIdleTimer = setTimeout(stopTyping, TYPING_IDLE_MS);
-}
-
-function stopTyping() {
-  clearTimeout(typingIdleTimer);
-  typingIdleTimer = null;
-  if (typingAnnounced && currentRoomId) socket.emit("stop-typing", { roomId: currentRoomId });
-  typingAnnounced = false;
-  lastTypingSentAt = 0;
-}
-
-// What I show: "Stranger is typing..." as the last line of the chat box. It goes away when they
-// stop, when their message arrives, and with the rest of the chat (see resetChat). If a
-// "stop-typing" never arrives, it also goes away by itself after 5 seconds.
-const TYPING_STALE_MS = 5000;
-let typingIndicator = null;
-let typingStaleTimer = null;
-
-function showTypingIndicator() {
-  if (!typingIndicator) {
-    typingIndicator = document.createElement("div");
-    typingIndicator.className = "typing-indicator";
-    typingIndicator.setAttribute("aria-hidden", "true");
-
-    const dots = document.createElement("span");
-    dots.className = "typing-dots";
-    for (let i = 0; i < 3; i++) dots.appendChild(document.createElement("i"));
-
-    const label = document.createElement("span");
-    label.textContent = "Stranger is typing...";
-    typingIndicator.append(dots, label);
-  }
-
-  chatBox.appendChild(typingIndicator); // (re)appending keeps it as the last line
-  scrollChatToEnd();
-
-  clearTimeout(typingStaleTimer);
-  typingStaleTimer = setTimeout(hideTypingIndicator, TYPING_STALE_MS);
-}
-
-function hideTypingIndicator() {
-  clearTimeout(typingStaleTimer);
-  typingStaleTimer = null;
-  if (typingIndicator) typingIndicator.remove();
-}
-
-// A new chat starts with nothing typed and nothing announced.
-function resetTypingState() {
-  clearTimeout(typingIdleTimer);
-  typingIdleTimer = null;
-  typingAnnounced = false;
-  lastTypingSentAt = 0;
-  hideTypingIndicator();
-}
-
-// ---------- Message reactions ----------
-// A reaction picker (heart, laugh, thumbs up, wow, sad) opens on hover (mouse) or on tap (touch).
-// Each person has at most one reaction per message; picking the same one again takes it back.
-// Reactions live only in this chat, like the messages themselves, and are gone when it clears.
-const REACTION_CHOICES = [
-  { emoji: "\u2764\uFE0F", name: "love" },
-  { emoji: "\uD83D\uDE02", name: "haha" },
-  { emoji: "\uD83D\uDC4D", name: "like" },
-  { emoji: "\uD83D\uDE2E", name: "wow" },
-  { emoji: "\uD83D\uDE22", name: "sad" }
-];
-const REACTION_EMOJI = REACTION_CHOICES.map((choice) => choice.emoji);
-
-// messageId -> { el: the bubble, mine: emoji | null, theirs: emoji | null }
-const chatMessages = new Map();
-
-const chatCard = document.getElementById("chat-container");
-const reactionPicker = document.createElement("div");
-reactionPicker.className = "reaction-picker";
-reactionPicker.setAttribute("role", "toolbar");
-reactionPicker.setAttribute("aria-label", "React to this message");
-reactionPicker.hidden = true;
-chatCard.appendChild(reactionPicker);
-
-let pickerTarget = null; // the message id the picker is open for
-let pickerHideTimer = null;
-
-REACTION_CHOICES.forEach(({ emoji, name }) => {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "reaction-choice";
-  btn.dataset.emoji = emoji;
-  btn.setAttribute("aria-label", "React with " + name);
-  btn.textContent = emoji;
-  btn.addEventListener("click", () => {
-    if (pickerTarget) toggleMyReaction(pickerTarget, emoji);
-    closeReactionPicker();
-  });
-  reactionPicker.appendChild(btn);
-});
-
-function newMessageId() {
-  if (window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
-}
-
-// Redraws the small reaction pill on a bubble: one emoji per person, gold outline if one is yours.
-function renderReactions(record) {
-  const { el, mine, theirs } = record;
-  let pill = el.querySelector(".reactions");
-  const shown = [theirs, mine].filter(Boolean);
-
-  el.classList.toggle("has-reactions", shown.length > 0);
-  if (!shown.length) {
-    if (pill) pill.remove();
-    return;
-  }
-
-  if (!pill) {
-    pill = document.createElement("span");
-    pill.className = "reactions";
-    el.appendChild(pill);
-  }
-  pill.classList.toggle("is-mine", !!mine);
-  pill.textContent = shown.join(" ");
-  pill.setAttribute("aria-label", "Reactions: " + shown.join(" "));
-}
-
-// who is "mine" or "theirs"; emoji is a valid choice or null. Anything else is ignored.
-function setReaction(messageId, who, emoji) {
-  const record = chatMessages.get(messageId);
-  if (!record) return; // that message is not in this chat any more
-  if (emoji !== null && !REACTION_EMOJI.includes(emoji)) return;
-
-  record[who] = emoji;
-  renderReactions(record);
-}
-
-function toggleMyReaction(messageId, emoji) {
-  const record = chatMessages.get(messageId);
-  if (!record) return;
-
-  const next = record.mine === emoji ? null : emoji;
-  setReaction(messageId, "mine", next); // shown at once, before the stranger has seen it
-  if (currentRoomId) socket.emit("message-reaction", { roomId: currentRoomId, messageId, emoji: next });
-}
-
-function bubbleOf(node) {
-  return node && node.closest ? node.closest("#chat-box p[data-message-id]") : null;
-}
-
-function openReactionPicker(bubble) {
-  clearTimeout(pickerHideTimer);
-  const record = chatMessages.get(bubble.dataset.messageId);
-  if (!record) return;
-
-  pickerTarget = bubble.dataset.messageId;
-  reactionPicker.querySelectorAll(".reaction-choice").forEach((btn) => {
-    btn.setAttribute("aria-pressed", String(record.mine === btn.dataset.emoji));
-  });
-
-  reactionPicker.hidden = false;
-  const card = chatCard.getBoundingClientRect();
-  const box = chatBox.getBoundingClientRect();
-  const rect = bubble.getBoundingClientRect();
-  const width = reactionPicker.offsetWidth;
-  const height = reactionPicker.offsetHeight;
-
-  // Above the bubble if there is room, otherwise below it, and always inside the message area.
-  let top = rect.top - card.top - height - 4;
-  if (rect.top - box.top < height + 4) top = rect.bottom - card.top + 4;
-  top = Math.max(box.top - card.top, Math.min(top, box.bottom - card.top - height));
-
-  // Lined up with the bubble's own edge (yours on the right, theirs on the left).
-  let left = bubble.classList.contains("msg-you") ? rect.right - card.left - width : rect.left - card.left;
-  left = Math.max(6, Math.min(left, card.width - width - 6));
-
-  reactionPicker.style.top = top + "px";
-  reactionPicker.style.left = left + "px";
-}
-
-function closeReactionPicker() {
-  clearTimeout(pickerHideTimer);
-  reactionPicker.hidden = true;
-  pickerTarget = null;
-}
-
-function scheduleCloseReactionPicker() {
-  clearTimeout(pickerHideTimer);
-  pickerHideTimer = setTimeout(closeReactionPicker, 250);
-}
-
-const canHoverQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
-
-// Mouse: the picker follows the bubble under the pointer and stays open while the pointer is on it.
-chatBox.addEventListener("mouseover", (e) => {
-  if (!canHoverQuery.matches) return;
-  const bubble = bubbleOf(e.target);
-  if (bubble) openReactionPicker(bubble);
-});
-chatBox.addEventListener("mouseout", (e) => {
-  if (canHoverQuery.matches && bubbleOf(e.target)) scheduleCloseReactionPicker();
-});
-reactionPicker.addEventListener("mouseenter", () => clearTimeout(pickerHideTimer));
-reactionPicker.addEventListener("mouseleave", () => {
-  if (canHoverQuery.matches) scheduleCloseReactionPicker();
-});
-
-// Touch: tap a message to open the picker, tap it again (or anywhere else) to close it.
-chatBox.addEventListener("click", (e) => {
-  if (canHoverQuery.matches) return;
-  const bubble = bubbleOf(e.target);
-  if (!bubble) return;
-  if (pickerTarget === bubble.dataset.messageId && !reactionPicker.hidden) closeReactionPicker();
-  else openReactionPicker(bubble);
-});
-document.addEventListener("click", (e) => {
-  if (reactionPicker.hidden) return;
-  if (reactionPicker.contains(e.target) || bubbleOf(e.target)) return;
-  closeReactionPicker();
-});
-
-// Keyboard: Enter or Space on a focused message opens the picker, Escape closes it.
-chatBox.addEventListener("keydown", (e) => {
-  const bubble = bubbleOf(e.target);
-  if (!bubble || e.target !== bubble) return;
-  if (e.key === "Enter" || e.key === " ") {
-    e.preventDefault();
-    openReactionPicker(bubble);
-    reactionPicker.querySelector(".reaction-choice").focus();
-  }
-});
-reactionPicker.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  const record = chatMessages.get(pickerTarget);
-  closeReactionPicker();
-  if (record) record.el.focus();
-});
-chatBox.addEventListener("scroll", closeReactionPicker);
-
 // Once someone taps the X on the rules note, it stays hidden for good (on this device).
 const HIDE_RULES_KEY = "buksu-hide-chat-rules";
 
@@ -1691,11 +1185,6 @@ function rulesAreHidden() {
 
 // Clears the chat and puts the house rules back as its first line, unless they were dismissed.
 function resetChat() {
-  // The messages are going, so their reactions and the open picker go with them.
-  chatMessages.clear();
-  closeReactionPicker();
-  resetTypingState();
-
   if (rulesAreHidden()) {
     chatBox.replaceChildren();
     return;

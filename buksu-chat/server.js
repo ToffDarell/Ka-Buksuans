@@ -74,36 +74,6 @@ app.get("/supabase-config.js", (_req, res) => {
   );
 });
 
-// ---------- Active users ----------
-// How many people are connected right now, counted straight from the live sockets. Nothing is
-// stored, and a closed tab or a lost connection drops out on its own when socket.io notices the
-// disconnect. Only signed-in people have a socket, so this counts signed-in users.
-function activeUserCount() {
-  return io.sockets.sockets.size;
-}
-
-// The login page has no signed-in socket, so it listens on this small public namespace instead. It
-// carries only this number: no login, no handlers for anything a client sends, and its sockets are
-// not part of the count.
-const onlineNamespace = io.of("/online");
-onlineNamespace.on("connection", (socket) => {
-  socket.emit("active-users-count", activeUserCount());
-});
-
-// Tells everyone, signed in or not, the current number.
-function broadcastActiveUsers() {
-  const count = activeUserCount();
-  io.emit("active-users-count", count);
-  onlineNamespace.emit("active-users-count", count);
-}
-
-// Plain HTTP as well: the first number for the login page, and a fallback if sockets are blocked.
-// It returns only a number.
-app.get("/active-users-count", (_req, res) => {
-  res.set("Cache-Control", "no-store");
-  res.json({ count: activeUserCount() });
-});
-
 // ---------- TURN relay credentials (Metered) ----------
 // METERED_API_KEY stays on the server. The browser only ever receives the temporary ICE
 // server list that Metered generates from it.
@@ -156,12 +126,8 @@ app.get("/ice-servers", async (req, res) => {
 // `extensions: ["html"]` serves /privacy and /terms from privacy.html and terms.html.
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 
-const COLLEGES = ["COT", "CAS", "COE", "COB", "COL", "CON", "CPAG"];
+const COLLEGES = ["COT", "CAS", "COE", "COB", "COL", "CON"];
 const CHAT_MODES = ["video", "text"];
-
-// Message reactions: a small fixed set (heart, laugh, thumbs up, wow, sad).
-const REACTIONS = ["\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDC4D", "\uD83D\uDE2E", "\uD83D\uDE22"];
-const MESSAGE_ID_MAX_LENGTH = 64;
 
 // In-memory waiting queue. Holds { socketId, college, course, matchSameCollege, mode }.
 let waitingQueue = [];
@@ -174,13 +140,9 @@ const CHAT_RATE_LIMIT_MAX = 5;
 const CHAT_RATE_LIMIT_WINDOW_MS = 3000;
 const CHAT_MESSAGE_MAX_LENGTH = 500;
 const FIND_MATCH_COOLDOWN_MS = 1000;
-const REACTION_RATE_LIMIT_MAX = 10;
-const REACTION_RATE_LIMIT_WINDOW_MS = 3000;
 
 // socket.id -> array of message timestamps within the current window.
 const chatMessageTimestamps = new Map();
-// socket.id -> array of reaction timestamps within the current window.
-const reactionTimestamps = new Map();
 // socket.id -> timestamp of the last accepted "find-match" emit.
 const lastFindMatchAt = new Map();
 
@@ -197,24 +159,6 @@ function isChatRateLimited(socketId) {
 
   timestamps.push(now);
   chatMessageTimestamps.set(socketId, timestamps);
-  return false;
-}
-
-// Reactions are only relayed, never stored, but they are still capped so nobody can flood a partner.
-// Over the limit they are dropped silently.
-function isReactionRateLimited(socketId) {
-  const now = Date.now();
-  const timestamps = (reactionTimestamps.get(socketId) || []).filter(
-    (t) => now - t < REACTION_RATE_LIMIT_WINDOW_MS
-  );
-
-  if (timestamps.length >= REACTION_RATE_LIMIT_MAX) {
-    reactionTimestamps.set(socketId, timestamps);
-    return true;
-  }
-
-  timestamps.push(now);
-  reactionTimestamps.set(socketId, timestamps);
   return false;
 }
 
@@ -258,9 +202,6 @@ function buildMatchInfo(a, b) {
 
 io.on("connection", (socket) => {
   console.log(`Connected: ${socket.id}`);
-
-  // Everyone, the new socket included, gets the new number.
-  broadcastActiveUsers();
 
   socket.on("find-match", (payload = {}) => {
     if (isFindMatchOnCooldown(socket.id)) {
@@ -339,17 +280,8 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("signal", data);
   });
 
-  // Tells the other person that this one switched their mic or camera on or off, so their screen
-  // can say so instead of just showing a black picture or silence.
-  socket.on("media-state", (payload) => {
-    const { roomId, mic, cam } = payload || {};
-    if (!roomId || !socket.rooms.has(roomId)) return;
-    socket.to(roomId).emit("media-state", { mic: mic !== false, cam: cam !== false });
-  });
-
   // Text chat relay
-  socket.on("chat-message", (payload) => {
-    const { roomId, message, messageId } = payload || {};
+  socket.on("chat-message", ({ roomId, message }) => {
     if (!roomId || !socket.rooms.has(roomId)) return;
 
     if (isChatRateLimited(socket.id)) {
@@ -358,35 +290,7 @@ io.on("connection", (socket) => {
     }
 
     const trimmedMessage = typeof message === "string" ? message.slice(0, CHAT_MESSAGE_MAX_LENGTH) : message;
-    // The sender's id for this message rides along as a second argument, so a reaction can name
-    // it. Clients that do not know about ids simply ignore it.
-    const safeMessageId =
-      typeof messageId === "string" && messageId.length > 0 && messageId.length <= MESSAGE_ID_MAX_LENGTH
-        ? messageId
-        : undefined;
-    socket.to(roomId).emit("chat-message", trimmedMessage, safeMessageId);
-  });
-
-  // "typing" and "stop-typing": relayed to the other person only. Nothing is stored, and the client
-  // already throttles how often it sends these.
-  ["typing", "stop-typing"].forEach((eventName) => {
-    socket.on(eventName, (payload) => {
-      const { roomId } = payload || {};
-      if (!roomId || !socket.rooms.has(roomId)) return;
-      socket.to(roomId).emit(eventName);
-    });
-  });
-
-  // A reaction to one message, relayed to the other person only. Nothing is stored. The emoji is
-  // one of REACTIONS, or null to take the reaction back.
-  socket.on("message-reaction", (payload) => {
-    const { roomId, messageId, emoji } = payload || {};
-    if (!roomId || !socket.rooms.has(roomId)) return;
-    if (typeof messageId !== "string" || !messageId || messageId.length > MESSAGE_ID_MAX_LENGTH) return;
-    if (emoji !== null && !REACTIONS.includes(emoji)) return;
-    if (isReactionRateLimited(socket.id)) return;
-
-    socket.to(roomId).emit("message-reaction", { messageId, emoji });
+    socket.to(roomId).emit("chat-message", trimmedMessage);
   });
 
   // Report the current partner. Runs server-side so the reported user's
@@ -423,10 +327,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("leave-room", () => {
-    // Stop pressed while still searching: also leave the waiting line. Otherwise this person stays
-    // in it with the college they picked earlier, and the next student is matched with someone
-    // who is back in the lobby (possibly having chosen a different college since).
-    waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);
     leaveCurrentRoom(socket);
   });
 
@@ -435,11 +335,7 @@ io.on("connection", (socket) => {
     waitingQueue = waitingQueue.filter((entry) => entry.socketId !== socket.id);
     leaveCurrentRoom(socket);
     chatMessageTimestamps.delete(socket.id);
-    reactionTimestamps.delete(socket.id);
     lastFindMatchAt.delete(socket.id);
-
-    // The socket is already out of io.sockets by now, so this is the count without it.
-    broadcastActiveUsers();
   });
 });
 

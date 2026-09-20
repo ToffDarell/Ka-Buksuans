@@ -115,7 +115,6 @@
       </div>
       <p class="tagline">Random Video Chat</p>
       <p class="blurb">Meet a random Buksuan for a live video or text chat. <strong class="restrict">Made for BukSU students.</strong></p>
-      <p class="online-count" hidden><span class="online-dot" aria-hidden="true"></span><span class="online-text"></span></p>
       <button id="login-btn" class="route" type="button">
         <span>Login with Google</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5h12V4l8 8-8 8v-5.5H2z"/></svg>
@@ -201,16 +200,8 @@
       </div>
     </header>
 
-    <section id="whats-new" class="board whats-new" aria-label="What's new" hidden>
-      <p class="whats-new-text"><strong>What's new:</strong> react to messages with an emoji (hover on a computer, tap on a phone), see when the stranger is typing, switch your mic and camera off in a video chat, and get matched again automatically when a stranger leaves. The College of Public Administration and Governance (CPAG) is now on the list.</p>
-      <button id="whats-new-close" class="plate-btn" type="button">Got it</button>
-    </section>
-
     <section id="lobby-panel" class="board lobby" aria-labelledby="lobby-title">
-      <div class="lobby-head">
-        <h2 id="lobby-title" class="board-title">Match Setup</h2>
-        <p class="online-count" hidden><span class="online-dot" aria-hidden="true"></span><span class="online-text"></span></p>
-      </div>
+      <h2 id="lobby-title" class="board-title">Match Setup</h2>
 
       <div class="lobby-grid">
         <fieldset class="field directory">
@@ -224,7 +215,6 @@
             <option value="COB">College of Business (COB)</option>
             <option value="COL">College of Law (COL)</option>
             <option value="CON">College of Nursing (CON)</option>
-            <option value="CPAG">College of Public Administration and Governance (CPAG)</option>
           </select>
           <div id="college-list" class="directory-list"></div>
         </fieldset>
@@ -232,7 +222,7 @@
         <div class="lobby-side">
           <div class="field">
             <label for="course-input">Course<span class="optional-tag">optional</span></label>
-            <input id="course-input" type="text" placeholder="e.g. BSIT, BSBA, BSED" maxlength="40" list="course-suggestions" autocomplete="off">
+            <input id="course-input" type="text" placeholder="e.g. BSIT, BSCS, BSED" maxlength="40" list="course-suggestions" autocomplete="off">
             <datalist id="course-suggestions">
               <option value="BSIT"></option>
               <option value="BSED"></option>
@@ -240,10 +230,10 @@
               <option value="BSN"></option>
               <option value="BSCOMDEV"></option>
               <option value="BSDEVCOM"></option>
+              <option value="BSCS"></option>
               <option value="BSHRM"></option>
               <option value="BSBA"></option>
               <option value="BSCEMC"></option>
-              <option value="BSPA"></option>
 
             </datalist>
           </div>
@@ -286,14 +276,6 @@
           <video id="local-video" autoplay muted playsinline></video>
           <span class="tile-label">You</span>
           <span class="college-badge" id="local-badge" hidden></span>
-          <div class="media-toggles">
-            <button id="mic-btn" class="media-btn" type="button" aria-label="Mute microphone" title="Mute microphone" disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/><path class="slash" d="M4 4l16 16"/></svg>
-            </button>
-            <button id="cam-btn" class="media-btn" type="button" aria-label="Turn camera off" title="Turn camera off" disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/><path class="slash" d="M4 4l16 16"/></svg>
-            </button>
-          </div>
           <div class="video-placeholder" id="local-placeholder">
             <div class="avatar">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/></svg>
@@ -310,9 +292,6 @@
               <span id="conn-pill-text">Connected</span>
             </span>
           </div>
-          <span class="remote-mic-off" id="remote-mic-off" role="img" aria-label="Stranger's microphone is off" title="Stranger's microphone is off" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/><path d="M4 4l16 16"/></svg>
-          </span>
           <span class="college-badge" id="remote-badge" hidden></span>
           <div class="video-placeholder" id="remote-placeholder">
             <div class="searching" aria-hidden="true"><span class="spinner"></span></div>

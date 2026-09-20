@@ -519,20 +519,13 @@ button:disabled {
   align-items: stretch;
 }
 
-/* The right column stretches to the height of the college list. Course, the same-college checkbox
-   and Chat Mode sit close together with an even gap, and Find Match stays at the bottom, level
-   with the end of the college list. */
+/* The right column stretches to the height of the college list; space-between
+   puts Find Match on the same bottom edge as the last college row. */
 .lobby-side {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 16px;
-}
-
-@media (min-width: 760px) {
-  #lobby-panel .lobby-side .route {
-    margin-top: auto;
-  }
 }
 
 .field {
@@ -624,7 +617,7 @@ input[type="text"]:focus-visible,
   grid-template-columns: 4.5rem minmax(0, 1fr) 24px;
   align-items: center;
   column-gap: 12px;
-  min-height: 48px;
+  min-height: 50px;
   padding: 6px 14px 6px 16px;
   color: var(--vinyl);
   cursor: pointer;
@@ -860,13 +853,6 @@ input[type="text"]:focus-visible,
   border-width: 3px;
 }
 
-/* Your own preview is mirrored, like looking in a mirror. This only changes how the picture is
-   drawn in your browser. The stream that is sent to the stranger comes straight from the camera
-   (see pc.addTrack in app.js) and is never flipped. The stranger's video is not mirrored. */
-#local-video {
-  transform: scaleX(-1);
-}
-
 .video-tile video {
   width: 100%;
   height: 100%;
@@ -927,97 +913,6 @@ input[type="text"]:focus-visible,
 
 .video-tile:first-child .college-badge {
   display: none;
-}
-
-/* Your microphone and camera switches: two round buttons in the corner of your own tile. */
-.media-toggles {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 3;
-  display: flex;
-  gap: 8px;
-}
-
-.media-btn {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: rgba(0, 0, 0, 0.55);
-  color: #ffffff;
-  border: 0;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
-  transition: background-color 0.15s ease;
-}
-
-.media-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.75);
-}
-
-.media-btn:disabled {
-  opacity: 0.4;
-}
-
-.media-btn svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.media-btn .slash {
-  display: none;
-}
-
-/* A red mark on the stranger's tile while they have their microphone muted. */
-.remote-mic-off {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 3;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #d93025;
-  color: #ffffff;
-  border-radius: 50%;
-}
-
-.remote-mic-off[hidden] {
-  display: none;
-}
-
-.remote-mic-off svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* Switched off: red, with a line through the icon. */
-.media-btn.is-off {
-  background: #d93025;
-  box-shadow: none;
-}
-
-.media-btn.is-off:hover:not(:disabled) {
-  background: #b3261e;
-}
-
-.media-btn.is-off .slash {
-  display: block;
 }
 
 .video-placeholder {
@@ -1434,25 +1329,6 @@ input[type="text"]:focus-visible,
   font-size: 0.9375rem;
 }
 
-/* "Stranger disconnected": its own panel with a thin red outline, so it stands out from messages. */
-#chat-box .disconnect-note {
-  flex: none;
-  align-self: stretch;
-  padding: 10px 12px;
-  background: var(--navy-raised);
-  color: var(--vinyl);
-  box-shadow: inset 0 0 0 1.5px var(--stop);
-  border-radius: var(--radius);
-  text-align: left;
-  font-size: 0.875rem;
-  line-height: 1.35;
-}
-
-.disconnect-note strong {
-  display: block;
-  font-weight: 700;
-}
-
 /* The house rules sit at the top of the chat as a note, not as someone's message. */
 #chat-box .rules-note {
   flex: none;
@@ -1497,208 +1373,6 @@ input[type="text"]:focus-visible,
   border-radius: var(--radius);
   line-height: 1.4;
   overflow-wrap: anywhere;
-}
-
-/* ----- What's new card (top of Match Setup, shown once per update) ----- */
-.whats-new {
-  width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  padding: 12px 16px;
-}
-
-.whats-new[hidden],
-#app-screen.in-call .whats-new {
-  display: none;
-}
-
-.whats-new-text {
-  flex: 1 1 320px;
-  color: var(--vinyl-dim);
-  font-size: 0.875rem;
-  line-height: 1.45;
-}
-
-.whats-new-text strong {
-  color: var(--vinyl);
-  font-weight: 700;
-}
-
-.whats-new .plate-btn {
-  flex: none;
-  min-height: 36px;
-}
-
-/* ----- Online count (login page and Match Setup) ----- */
-.online-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--vinyl-dim);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.online-count[hidden] {
-  display: none;
-}
-
-.online-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--go);
-}
-
-.lobby-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 16px;
-}
-
-.login-board .online-count {
-  align-self: flex-start;
-}
-
-/* ----- Typing indicator ----- */
-#chat-box .typing-indicator {
-  flex: none;
-  align-self: flex-start;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px;
-  color: var(--vinyl-dim);
-  font-size: 0.8125rem;
-}
-
-.typing-dots {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.typing-dots i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--gold);
-  animation: typingWave 1.2s ease-in-out infinite;
-}
-
-.typing-dots i:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.typing-dots i:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-/* The three dots fade up one after another. Opacity only, so nothing bounces. */
-@keyframes typingWave {
-  0%,
-  60%,
-  100% {
-    opacity: 0.35;
-  }
-  30% {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .typing-dots i {
-    animation: none;
-    opacity: 0.8;
-  }
-}
-
-/* ----- Reactions ----- */
-#chat-box p[data-message-id] {
-  position: relative;
-}
-
-/* Room under the bubble for the reaction pill that hangs off its bottom edge. */
-#chat-box p.has-reactions {
-  margin-bottom: 12px;
-}
-
-.reactions {
-  position: absolute;
-  bottom: -12px;
-  padding: 1px 7px;
-  background: var(--navy);
-  color: var(--vinyl);
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1.5px var(--rule);
-  font-size: 0.8125rem;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.reactions.is-mine {
-  box-shadow: inset 0 0 0 1.5px var(--gold);
-}
-
-#chat-box p.msg-you .reactions {
-  right: 8px;
-}
-
-#chat-box p.msg-stranger .reactions {
-  left: 8px;
-}
-
-.reaction-picker {
-  position: absolute;
-  z-index: 6;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  background: var(--navy);
-  border-radius: 999px;
-  box-shadow: var(--lift), inset 0 0 0 1.5px var(--rule);
-}
-
-.reaction-picker[hidden] {
-  display: none;
-}
-
-.reaction-choice {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  font-size: 1.25rem;
-  line-height: 1;
-  transition: background-color 0.12s ease, transform 0.12s ease;
-}
-
-.reaction-choice:hover {
-  background: var(--navy-raised);
-  transform: scale(1.12);
-}
-
-/* The one you already picked on this message. */
-.reaction-choice[aria-pressed="true"] {
-  background: var(--gold);
-}
-
-@media (pointer: coarse) {
-  .reaction-choice {
-    width: 42px;
-    height: 42px;
-  }
 }
 
 #chat-box p.msg-you {
@@ -2186,36 +1860,6 @@ input[type="text"]:focus-visible,
     height: 100%;
     object-fit: cover;
     object-position: center 35%;
-  }
-
-  /* In the small window the two buttons sit along the top edge, small, clear of the "You" tag. */
-  #app-screen.feed-overlay .media-toggles {
-    top: 4px;
-    right: auto;
-    bottom: auto;
-    left: 50%;
-    gap: 4px;
-    transform: translateX(-50%);
-  }
-
-  #app-screen.feed-overlay .media-btn {
-    width: 26px;
-    height: 26px;
-  }
-
-  #app-screen.feed-overlay .media-btn svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  /* Your small window sits in the stranger's bottom-right corner, so their muted mark moves up. */
-  #app-screen.feed-overlay .remote-mic-off {
-    top: 8px;
-    bottom: auto;
-  }
-
-  #app-screen.feed-overlay .pip-self-video.is-hidden .media-toggles {
-    display: none;
   }
 
   #app-screen.feed-overlay .pip-self-video .video-placeholder .avatar {
