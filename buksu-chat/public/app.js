@@ -375,6 +375,9 @@ function setStatus(state, text) {
 
   // With video, "connected" is shown as a small pill on the stranger's tile and the
   // status bar steps aside (see style.css). Text-only has no tile, so it keeps the bar.
+  // Report and the Stranger tag stay hidden (see style.css) until the call has really connected.
+  appScreen.classList.toggle("is-searching", state !== "connected");
+
   const textOnly = appScreen.classList.contains("text-only");
   if (state === "connected" && !textOnly) showConnPill(text);
   else hideConnPill();
@@ -543,6 +546,61 @@ function placeReportButton(mode) {
     reportBtn.classList.remove("plate-btn", "danger");
   }
 }
+
+// ---------- Camera layout on phones ----------
+// Two layouts, switched with the small button in the header (phones only):
+//   split   (default): the stranger on top and you underneath, two equal halves, nothing covered.
+//   overlay: the stranger fills the video area and your camera is a small portrait window
+//            in the corner that you can tap to hide or show.
+const feedLayoutBtn = document.getElementById("feed-layout-btn");
+const pipSelf = document.getElementById("pip-self-video");
+const FEED_LAYOUT_KEY = "buksu-feed-layout";
+
+function applyFeedLayout(layout) {
+  const overlay = layout === "overlay";
+  appScreen.classList.toggle("feed-overlay", overlay);
+  feedLayoutBtn.setAttribute("aria-pressed", String(overlay));
+
+  // Only the small overlay window is interactive. In the split layout it is just a normal tile.
+  pipSelf.classList.remove("is-hidden");
+  if (overlay) {
+    pipSelf.setAttribute("role", "button");
+    pipSelf.setAttribute("aria-label", "Hide your camera");
+    pipSelf.tabIndex = 0;
+  } else {
+    pipSelf.removeAttribute("role");
+    pipSelf.removeAttribute("aria-label");
+    pipSelf.removeAttribute("tabindex");
+  }
+
+  try {
+    localStorage.setItem(FEED_LAYOUT_KEY, layout);
+  } catch (err) {}
+}
+
+// Tap your own small camera window to clear it from the screen, and tap the camera icon to bring it back.
+function togglePipSelf() {
+  if (!appScreen.classList.contains("feed-overlay")) return;
+  const hidden = pipSelf.classList.toggle("is-hidden");
+  pipSelf.setAttribute("aria-label", hidden ? "Show your camera" : "Hide your camera");
+}
+
+pipSelf.addEventListener("click", togglePipSelf);
+pipSelf.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    togglePipSelf();
+  }
+});
+feedLayoutBtn.addEventListener("click", () => {
+  applyFeedLayout(appScreen.classList.contains("feed-overlay") ? "split" : "overlay");
+});
+
+let savedFeedLayout = "split";
+try {
+  savedFeedLayout = localStorage.getItem(FEED_LAYOUT_KEY) === "overlay" ? "overlay" : "split";
+} catch (err) {}
+applyFeedLayout(savedFeedLayout);
 
 // ---------- Matchmaking controls ----------
 findBtn.addEventListener("click", async () => {
@@ -1051,6 +1109,9 @@ async function handleSignal(data) {
 }
 
 function cleanupPeerOnly() {
+  // Next, Stop or a disconnect: there is no one to report until the next match.
+  reportBtn.style.display = "none";
+
   peerGeneration += 1;
   clearTimeout(disconnectTimer);
   clearTimeout(connectTimer);

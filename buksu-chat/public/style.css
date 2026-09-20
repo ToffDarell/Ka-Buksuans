@@ -23,6 +23,8 @@
   --stop: #ff7a6b;
   --stop-text: #ffb4ab;
   --danger-hover: #3b1d2b;
+  --secondary-bg: #17306b;
+  --secondary-ink: #f4f1e6;
 
   /* Roles that swap in the light theme. */
   --ink: #061233; /* dark text that sits on gold */
@@ -66,6 +68,8 @@
   --stop: #d93025;
   --stop-text: #b3261e;
   --danger-hover: #fdecea;
+  --secondary-bg: #0b1f4d;
+  --secondary-ink: #f4f1e6;
 
   --chip: #0b1f4d;
   --chip-ink: #f4f1e6;
@@ -797,23 +801,21 @@ input[type="text"]:focus-visible,
   margin-top: 0;
 }
 
-/* ---------- Stage: video, status, controls, chat ---------- */
+/* ---------- Stage: video on top, then a control column with the chat beside it ---------- */
 .stage {
+  --panel-w: 116px;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: var(--panel-w) minmax(0, 1fr);
   grid-template-areas:
-    "video"
-    "console"
-    "chat";
-  gap: 16px;
+    "video video"
+    "console chat";
+  gap: 12px;
 }
 
 /* Text only has no video row, so drop it from the grid instead of leaving a gap. */
 #app-screen.text-only .stage {
-  grid-template-areas:
-    "console"
-    "chat";
+  grid-template-areas: "console chat";
 }
 
 /* Until a match is started, only the status line is needed. */
@@ -984,70 +986,41 @@ input[type="text"]:focus-visible,
   height: 20px;
 }
 
-/* Searching: three wayfinding chevrons light up in turn. The only motion on the stage. */
+/* Searching: a spinner above the status text. It keeps turning for as long as the placeholder is
+   showing, which is until the stranger's video actually starts playing. */
 .searching {
   display: flex;
-  gap: 4px;
+  justify-content: center;
 }
 
-.searching svg {
-  width: 28px;
-  height: 28px;
-  fill: var(--vinyl);
-  opacity: 0.3;
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--rule);
+  border-top-color: var(--vinyl);
+  border-radius: 50%;
+  animation: spinRing 0.9s linear infinite;
 }
 
-/* They only move while the status really is "searching". */
-.stage:has(#status-bar.state-waiting) .searching svg {
-  animation: chevron 1.2s ease-in-out infinite;
+.video-placeholder.hidden .spinner {
+  animation: none;
 }
 
-.stage:has(#status-bar.state-waiting) .searching svg:nth-child(2) {
-  animation-delay: 0.2s;
+@keyframes spinRing {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.stage:has(#status-bar.state-waiting) .searching svg:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-.video-placeholder.hidden .searching svg {
-  animation: none !important;
-}
-
-/* The stranger's idle screen carries the brand, like a channel logo card. */
-.idle-lockup {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.idle-mark {
-  width: 46px;
-  height: 46px;
-}
-
-.idle-mark svg {
-  width: 28px;
-  height: 28px;
-}
-
-.idle-word {
+/* The brand as a faint watermark under the spinner and the status text. The header keeps the real logo. */
+.video-watermark {
   font-family: var(--font-script);
-  font-weight: 400;
-  font-size: 2.25rem;
+  font-size: 1.75rem;
   line-height: 1;
-  letter-spacing: 0;
   color: var(--vinyl);
-}
-
-@keyframes chevron {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  35% {
-    opacity: 1;
-  }
+  opacity: 0.28;
+  user-select: none;
+  pointer-events: none;
 }
 
 .tap-to-play {
@@ -1068,11 +1041,11 @@ input[type="text"]:focus-visible,
   display: none;
 }
 
-/* Status and controls sit together under the video. */
+/* The control column: the status line on top, then Next, Stop and the College filter. */
 .console {
   grid-area: console;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   gap: 10px;
   min-width: 0;
 }
@@ -1080,7 +1053,7 @@ input[type="text"]:focus-visible,
 #status-bar {
   position: relative;
   overflow: hidden;
-  flex: 1 1 auto;
+  flex: none;
   min-width: 0;
   min-height: 48px;
   display: flex;
@@ -1191,14 +1164,11 @@ input[type="text"]:focus-visible,
   display: none;
 }
 
-/* With the bar gone, NEXT, STOP and REPORT share the whole row. */
-#app-screen.in-call.text-only .console:has(#status-bar.is-hidden) #controls {
-  flex: 1 1 0;
-  width: 100%;
-}
-
-#app-screen.in-call.text-only .console:has(#status-bar.is-hidden) #controls .plate-btn {
-  flex: 1 1 0;
+/* Report and the Stranger tag only appear once the call has really connected. app.js keeps the
+   is-searching class on the app for every state except "connected". */
+#app-screen.is-searching .video-tile:last-child .tile-meta,
+#app-screen.is-searching #report-btn {
+  display: none !important;
 }
 
 .tile-meta {
@@ -1302,22 +1272,32 @@ input[type="text"]:focus-visible,
   stroke: #ff8080;
 }
 
+/* Control column: Next, Stop and the College filter are big stacked buttons with soft rounded
+   corners that lift a little on hover. */
 #controls {
-  flex: none;
+  flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
-/* Control bar: NEXT, STOP and REPORT are one sleek row of bold Inter caps, each with an icon. */
 #controls .plate-btn {
-  min-height: 60px;
-  padding: 0 18px;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  max-height: 112px;
+  padding: 0 14px;
   gap: 10px;
+  border-radius: 12px;
   font-family: var(--font-ui);
   font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  box-shadow: inset 0 0 0 1.5px var(--rule), 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s var(--ease-out), box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 #controls .plate-btn svg {
@@ -1325,8 +1305,24 @@ input[type="text"]:focus-visible,
   height: 22px;
 }
 
-#controls #next-btn {
-  min-width: 140px;
+/* Next is the one gold button. */
+#controls .plate-btn.primary {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28);
+}
+
+/* Stop is dark navy, a step behind Next. */
+#controls #stop-btn {
+  background: var(--secondary-bg);
+  color: var(--secondary-ink);
+}
+
+#controls .plate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+#controls .plate-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 /* Outline icons (the warning triangle) are drawn with a stroke instead of a fill. */
@@ -1497,14 +1493,11 @@ input[type="text"]:focus-visible,
 }
 
 /* ---------- Side by side: two equal tiles on top, controls and chat below ---------- */
-@media (min-width: 760px) {
-  #app-screen.in-call .stage {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      "video video"
-      "console console"
-      "chat chat";
-    align-items: stretch;
+@media (min-width: 601px) {
+  /* A 300px control column on the left, the chat alongside on the right. */
+  .stage {
+    --panel-w: 300px;
+    gap: 16px;
   }
 
   .video-tile:first-child,
@@ -1552,49 +1545,22 @@ input[type="text"]:focus-visible,
     height: 28px;
   }
 
-  /* One 64px bar across the width, under both tiles: the status line on the left while it
-     searches, and NEXT and STOP sharing the rest. Once connected the status steps aside
-     and NEXT and STOP take the whole bar. */
-  .console {
-    flex-direction: row;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  #status-bar {
-    flex: 1 1 0;
-    min-height: 64px;
-  }
-
-  #controls {
-    flex: 1 1 0;
-    width: auto;
-  }
-
   #controls .plate-btn {
-    flex: 1 1 0;
-    min-height: 64px;
+    min-height: 76px;
     font-size: 1.15rem;
   }
 
-  #controls #next-btn {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  /* A tall chat: room for 5 to 8 messages, growing with the window. The input stays pinned
-     at the bottom of the panel. */
+  /* The chat: room for 5 or 6 messages, with the input pinned at the bottom. The 503px is
+     everything else on the page: padding 32, header 52, gaps 32, video 305, and the chat panel's
+     own padding, gap and input row 82. */
   #chat-container {
     padding: 14px 16px;
     gap: 10px;
   }
 
-  /* Sized so header, video, control bar and chat add up to exactly one screen. The 583px is
-     everything else on the page: padding 32, header 52, video 305, bar 64, gaps 48 and the
-     chat panel's own padding and input 82. */
   #chat-box {
-    min-height: clamp(150px, calc(100vh - 583px), 320px);
-    min-height: clamp(150px, calc(100dvh - 583px), 320px);
+    min-height: clamp(170px, calc(100vh - 503px), 180px);
+    min-height: clamp(170px, calc(100dvh - 503px), 180px);
   }
 
   #app-screen.in-call {
@@ -1602,60 +1568,27 @@ input[type="text"]:focus-visible,
     padding-bottom: 16px;
   }
 
-  /* Text only: no video, so the chat gets the whole stage. */
-  #app-screen.in-call.text-only .stage {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "console"
-      "chat";
-  }
-
-  #app-screen.in-call.text-only .console {
-    flex-direction: row;
-  }
-
-  #app-screen.in-call.text-only #status-bar {
-    flex: 1 1 auto;
-  }
-
+  /* Text only: no video, so the chat is tall and the buttons keep a fixed height at the top. */
   #app-screen.in-call.text-only #controls {
-    flex: none;
-    width: auto;
+    flex: 0 0 auto;
   }
 
   #app-screen.in-call.text-only #controls .plate-btn {
-    flex: 0 0 150px;
-    min-height: 56px;
-    font-size: 1.1rem;
+    flex: 0 0 auto;
+    min-height: 64px;
   }
 
-  /* Text only: header, control bar and the chat panel fill one screen exactly. */
   #app-screen.in-call.text-only #chat-box {
-    min-height: max(220px, calc(100vh - 262px));
-    min-height: max(220px, calc(100dvh - 262px));
+    min-height: max(220px, calc(100vh - 182px));
+    min-height: max(220px, calc(100dvh - 182px));
   }
 }
 
-/* ---------- Phones: self-view is a small inset, controls sit under the video ---------- */
-@media (max-width: 759px) {
+/* ---------- Phones: the control column keeps a fixed touch width, the chat fills the rest ---------- */
+@media (max-width: 600px) {
   /* The 16:9 tile is short on a phone, so lift the idle content clear of the self-view inset. */
   .video-tile:last-child .video-placeholder {
     padding: 8px 0 64px;
-  }
-
-  .idle-mark,
-  .video-tile:last-child .searching {
-    display: none;
-  }
-
-  .idle-word {
-    font-size: 2rem;
-  }
-
-  #app-screen.text-only .stage {
-    grid-template-areas:
-      "chat"
-      "console";
   }
 
   #app-screen.in-call.text-only #chat-container {
@@ -1663,15 +1596,235 @@ input[type="text"]:focus-visible,
     min-height: 58dvh;
   }
 
-  /* Tall phones: the call fills the whole screen. The stage takes the leftover height and the
-     chat panel stretches to the bottom, instead of leaving an empty band under it. */
+  /* Phones: the control column keeps a fixed, comfortable touch width, and the chat takes the
+     rest of the width and ALL of the leftover height, so its input is never clipped. */
+  .stage {
+    --panel-w: 116px;
+    gap: 10px;
+  }
+
   #app-screen.in-call .stage {
     flex: 1 1 auto;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   #app-screen.in-call.text-only .stage {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* The stranger's video box already says "Searching for a match...", so on phones the control
+     column stays clean: just Next and Stop. Text Only has no video box, so it keeps this line. */
+  #app-screen:not(.text-only) #status-bar {
+    display: none;
+  }
+
+  #status-bar {
+    padding: 8px 10px;
+    gap: 8px;
+    font-size: 0.8125rem;
+    line-height: 1.25;
+  }
+
+  #controls .plate-btn {
+    min-height: 58px;
+    padding: 0 6px;
+    gap: 6px;
+    font-size: 0.95rem;
+    letter-spacing: 0.03em;
+  }
+
+  #controls .plate-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  #chat-container {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  #chat-box {
+    min-height: 160px;
+  }
+
+  #chat-input {
+    min-width: 0;
+    padding: 10px;
+  }
+
+  #send-btn span {
+    display: none;
+  }
+
+  #send-btn {
+    min-width: 44px;
+    padding: 0 12px;
+  }
+}
+
+/* The camera-layout switch and the hidden-camera icon only exist on phones. */
+.feed-layout-btn {
+  display: none;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: var(--navy-raised);
+  color: var(--vinyl);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1.5px var(--rule);
+}
+
+.feed-layout-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feed-layout-btn[aria-pressed="true"] {
+  background: var(--gold);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.pip-hidden-icon {
+  display: none;
+}
+
+/* ---------- Phones (600px and under): two camera layouts ----------
+   Split (default): the stranger on top and you underneath, in two equal halves, so neither
+   camera is covered. Overlay: the stranger fills the video area and your camera is a small
+   portrait window in the corner, which you can tap to hide. */
+@media (max-width: 600px) {
+  #app-screen.in-call:not(.text-only) .feed-layout-btn {
+    display: inline-flex;
+  }
+
+  /* ----- Split: two equal halves ----- */
+  #app-screen:not(.feed-overlay) #video-container {
+    flex-direction: column;
+    gap: 8px;
+    height: clamp(260px, 44vh, 420px);
+    height: clamp(260px, 44dvh, 420px);
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child,
+  #app-screen:not(.feed-overlay) .video-tile:last-child {
+    position: relative;
+    inset: auto;
+    z-index: auto;
+    flex: 1 1 0;
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
+    border-width: 4px;
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:last-child {
+    order: 1; /* the stranger, on top: college badge, Stranger tag and Report */
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child {
+    order: 2; /* you, underneath: the You tag */
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child .tile-label {
+    left: 8px;
+    bottom: 8px;
+    padding: 5px 10px 4px;
+    font-size: 1rem;
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child .college-badge:not([hidden]) {
+    display: block;
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child .video-placeholder span {
+    display: block;
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child .video-placeholder .avatar {
+    width: 48px;
+    height: 48px;
+  }
+
+  #app-screen:not(.feed-overlay) .video-tile:first-child .video-placeholder .avatar svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* No self-view sits on the stranger's half in this layout, so the idle content can centre. */
+  #app-screen:not(.feed-overlay) .video-tile:last-child .video-placeholder {
+    padding: 8px 0;
+  }
+
+  /* ----- Overlay: your camera is a 70 x 90 portrait window ----- */
+  #app-screen.feed-overlay .video-tile.pip-self-video {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 3;
+    width: 70px;
+    height: 90px;
+    aspect-ratio: auto;
+    border-width: 2px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  /* A portrait frame with object-fit: cover trims the sides, not the top and bottom, so your
+     head and face stay in frame instead of being clipped. */
+  #app-screen.feed-overlay .pip-self-video video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 35%;
+  }
+
+  #app-screen.feed-overlay .pip-self-video .video-placeholder .avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Tapped: the window shrinks to a small camera icon. Tap the icon to bring it back. */
+  #app-screen.feed-overlay .pip-self-video.is-hidden {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--screen);
+  }
+
+  #app-screen.feed-overlay .pip-self-video.is-hidden video,
+  #app-screen.feed-overlay .pip-self-video.is-hidden .tile-label,
+  #app-screen.feed-overlay .pip-self-video.is-hidden .college-badge,
+  #app-screen.feed-overlay .pip-self-video.is-hidden .video-placeholder {
+    display: none;
+  }
+
+  #app-screen.feed-overlay .pip-self-video.is-hidden .pip-hidden-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--vinyl-dim);
+  }
+
+  .pip-hidden-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 }
 
@@ -1705,36 +1858,6 @@ input[type="text"]:focus-visible,
     position: sticky;
     bottom: 12px;
     box-shadow: 0 0 0 12px var(--navy);
-  }
-}
-
-@media (max-width: 560px) {
-  .console {
-    flex-direction: column;
-  }
-
-  #controls {
-    width: 100%;
-  }
-
-  /* Three buttons must fit a 360px phone: shrink the padding, gap and icons, not the touch height. */
-  #controls .plate-btn {
-    flex: 1 1 0;
-    min-width: 0;
-    padding: 0 8px;
-    gap: 6px;
-    font-size: 1rem;
-    letter-spacing: 0.03em;
-  }
-
-  #controls .plate-btn svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  #controls #next-btn {
-    flex: 1 1 0;
-    min-width: 0;
   }
 }
 
