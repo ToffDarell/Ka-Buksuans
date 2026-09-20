@@ -277,6 +277,35 @@
       </div>
     </section>
 
+    <section id="ready-panel" class="board ready" aria-labelledby="ready-title" hidden>
+      <h2 id="ready-title" class="board-title">Get ready</h2>
+      <p id="ready-hint" class="ready-hint"></p>
+      <div class="ready-preview">
+        <video id="ready-video" autoplay muted playsinline></video>
+        <div class="video-placeholder" id="ready-placeholder">
+          <div class="avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/><path d="M4 4l16 16"/></svg>
+          </div>
+          <span>Camera off</span>
+        </div>
+        <div class="media-toggles">
+          <button id="ready-mic-btn" class="media-btn" type="button" aria-label="Mute microphone" title="Mute microphone" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/><path class="slash" d="M4 4l16 16"/></svg>
+          </button>
+          <button id="ready-cam-btn" class="media-btn" type="button" aria-label="Turn camera off" title="Turn camera off" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/><path class="slash" d="M4 4l16 16"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="ready-actions">
+        <button id="ready-start" class="route" type="button">
+          <span>Start matching</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5h12V4l8 8-8 8v-5.5H2z"/></svg>
+        </button>
+        <button id="ready-back" class="plate-btn" type="button">Back</button>
+      </div>
+    </section>
+
     <div class="stage">
       <div id="video-container">
         <div class="video-tile pip-self-video" id="pip-self-video">
@@ -296,7 +325,7 @@
           </div>
           <div class="video-placeholder" id="local-placeholder">
             <div class="avatar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/><path d="M4 4l16 16"/></svg>
             </div>
             <span>Camera off</span>
           </div>
@@ -314,8 +343,11 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/><path d="M4 4l16 16"/></svg>
           </span>
           <span class="college-badge" id="remote-badge" hidden></span>
-          <div class="video-placeholder" id="remote-placeholder">
+          <div class="video-placeholder" id="remote-placeholder" data-state="idle">
             <div class="searching" aria-hidden="true"><span class="spinner"></span></div>
+            <div class="avatar cam-off-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5 21 7v10l-5-3.5"/><path d="M4 4l16 16"/></svg>
+            </div>
             <span id="remote-placeholder-text">Not connected yet</span>
             <div class="video-watermark" aria-hidden="true">Ka-Buksuan</div>
           </div>

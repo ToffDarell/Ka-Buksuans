@@ -170,6 +170,17 @@ let waitingQueue = [];
 // Tracks which room each socket currently belongs to.
 const socketRooms = new Map();
 
+// ---------- Not the same stranger twice in a row ----------
+// After two people part, they are not paired with each other again for a short while, so pressing
+// Next never puts you straight back with the person you just left. Anyone else who is compatible
+// always goes first. If those two are still the only ones waiting when the window ends, they are
+// paired after all (see matchWaitingPairs), so nobody is left waiting for ever.
+// Make the number bigger for a longer wait, smaller for a shorter one.
+const RECENT_PARTNER_AVOID_MS = 8000;
+
+// socket.id -> { partnerId, until }: who this socket last chatted with, and when the window ends.
+const recentPartners = new Map();
+
 // ---------- Rate limiting ----------
 const CHAT_RATE_LIMIT_MAX = 5;
 const CHAT_RATE_LIMIT_WINDOW_MS = 3000;
@@ -257,6 +268,107 @@ function buildMatchInfo(a, b) {
   };
 }
 
+// True while two sockets are inside the avoid window after parting. Either side's record is enough.
+function isRecentPartner(idA, idB) {
+  const now = Date.now();
+
+  return [[idA, idB], [idB, idA]].some(([owner, other]) => {
+    const record = recentPartners.get(owner);
+    if (!record) return false;
+
+    if (now >= record.until) {
+      recentPartners.delete(owner); // the window is over, so the record is no use to anyone
+      return false;
+    }
+    return record.partnerId === other;
+  });
+}
+
+// Called just before a socket leaves its room: remembers who it was chatting with, for both of them.
+function rememberPartner(socket, roomId) {
+  if (!socket.connected) return; // closing the tab: nobody will meet this socket again
+
+  const room = io.sockets.adapter.rooms.get(roomId);
+  const partnerId = room ? [...room].find((id) => id !== socket.id) : null;
+  if (!partnerId) return; // the other side already left (both pressed Next)
+
+  const until = Date.now() + RECENT_PARTNER_AVOID_MS;
+  recentPartners.set(socket.id, { partnerId, until });
+  recentPartners.set(partnerId, { partnerId: socket.id, until });
+
+  // Two people held apart may both still be waiting when the window ends, and nothing else would
+  // wake them up, so look at the waiting line again then.
+  setTimeout(matchWaitingPairs, RECENT_PARTNER_AVOID_MS + 100).unref();
+}
+
+// Pairs two students. Tells one side to be the WebRTC offer initiator, and hands each side the
+// other's college/course so the UI can show a match badge. socket is the one who just searched,
+// entry is the one who was already waiting (already taken out of the queue).
+// Every pairing gets its own room name, even for the same two people, so a late message from their
+// earlier chat can never land in the new one.
+let roomCounter = 0;
+
+function pairUp(socket, profile, entry) {
+  const partnerSocket = io.sockets.sockets.get(entry.socketId);
+
+  const roomId = `room-${++roomCounter}-${socket.id}-${entry.socketId}`;
+  socket.join(roomId);
+  partnerSocket.join(roomId);
+
+  socketRooms.set(socket.id, roomId);
+  socketRooms.set(entry.socketId, roomId);
+
+  const matchInfo = buildMatchInfo(profile, entry);
+
+  socket.emit("match-found", {
+    roomId,
+    initiator: true,
+    mode: profile.mode,
+    matchInfo,
+    partner: { college: entry.college, course: entry.course }
+  });
+  partnerSocket.emit("match-found", {
+    roomId,
+    initiator: false,
+    mode: profile.mode,
+    matchInfo,
+    partner: { college: profile.college, course: profile.course }
+  });
+}
+
+// Pairs anyone in the waiting line who can be paired right now. find-match deals with new arrivals;
+// this runs when an avoid window ends, for two people who were held apart and are still waiting.
+// It uses the same isCompatible rules, so college, course and mode filtering is unchanged.
+function matchWaitingPairs() {
+  for (let i = 0; i < waitingQueue.length; i++) {
+    const waiting = waitingQueue[i];
+    if (!io.sockets.sockets.get(waiting.socketId)) {
+      waitingQueue.splice(i, 1); // left without cleaning up
+      i--;
+      continue;
+    }
+
+    for (let j = i + 1; j < waitingQueue.length; j++) {
+      const other = waitingQueue[j];
+      const otherSocket = io.sockets.sockets.get(other.socketId);
+      if (!otherSocket) {
+        waitingQueue.splice(j, 1);
+        j--;
+        continue;
+      }
+
+      if (!isCompatible(waiting, other) || isRecentPartner(waiting.socketId, other.socketId)) continue;
+
+      // The one who joined the line later plays the newcomer, exactly as in find-match.
+      waitingQueue.splice(j, 1);
+      waitingQueue.splice(i, 1);
+      pairUp(otherSocket, other, waiting);
+      i--; // the line shifted, so look at the same position again
+      break;
+    }
+  }
+}
+
 io.on("connection", (socket) => {
   console.log(`Connected: ${socket.id}`);
 
@@ -293,7 +405,8 @@ io.on("connection", (socket) => {
         continue;
       }
 
-      if (isCompatible(profile, entry)) {
+      // Compatible as before, and not the person this socket has just parted from.
+      if (isCompatible(profile, entry) && !isRecentPartner(socket.id, entry.socketId)) {
         matchIndex = i;
         break;
       }
@@ -301,33 +414,7 @@ io.on("connection", (socket) => {
 
     if (matchIndex !== -1) {
       const [entry] = waitingQueue.splice(matchIndex, 1);
-      const partnerSocket = io.sockets.sockets.get(entry.socketId);
-
-      const roomId = `room-${socket.id}-${entry.socketId}`;
-      socket.join(roomId);
-      partnerSocket.join(roomId);
-
-      socketRooms.set(socket.id, roomId);
-      socketRooms.set(entry.socketId, roomId);
-
-      const matchInfo = buildMatchInfo(profile, entry);
-
-      // Tell one side to be the WebRTC offer initiator, and hand each side
-      // the other's college/course so the UI can show a match badge.
-      socket.emit("match-found", {
-        roomId,
-        initiator: true,
-        mode: profile.mode,
-        matchInfo,
-        partner: { college: entry.college, course: entry.course }
-      });
-      partnerSocket.emit("match-found", {
-        roomId,
-        initiator: false,
-        mode: profile.mode,
-        matchInfo,
-        partner: { college: profile.college, course: profile.course }
-      });
+      pairUp(socket, profile, entry);
     } else {
       waitingQueue.push({ socketId: socket.id, ...profile });
       socket.emit("waiting");
@@ -449,6 +536,12 @@ io.on("connection", (socket) => {
     reactionTimestamps.delete(socket.id);
     lastFindMatchAt.delete(socket.id);
 
+    // Forget this socket, and every record that names it, so nothing stale piles up.
+    recentPartners.delete(socket.id);
+    for (const [id, record] of recentPartners) {
+      if (record.partnerId === socket.id) recentPartners.delete(id);
+    }
+
     // The socket is already out of io.sockets by now, so this is the count without it.
     broadcastActiveUsers();
   });
@@ -457,6 +550,7 @@ io.on("connection", (socket) => {
 function leaveCurrentRoom(socket) {
   const roomId = socketRooms.get(socket.id);
   if (roomId) {
+    rememberPartner(socket, roomId);
     socket.to(roomId).emit("partner-left");
     socket.leave(roomId);
     socketRooms.delete(socket.id);

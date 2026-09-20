@@ -863,7 +863,8 @@ input[type="text"]:focus-visible,
 /* Your own preview is mirrored, like looking in a mirror. This only changes how the picture is
    drawn in your browser. The stream that is sent to the stranger comes straight from the camera
    (see pc.addTrack in app.js) and is never flipped. The stranger's video is not mirrored. */
-#local-video {
+#local-video,
+#ready-video {
   transform: scaleX(-1);
 }
 
@@ -1101,6 +1102,25 @@ input[type="text"]:focus-visible,
 
 .video-placeholder.hidden .spinner {
   animation: none;
+}
+
+/* The stranger's box is drawn from its data-state (set in app.js by renderRemoteBox), so the
+   spinner and the camera-off icon can never show together. Spinner: still looking or connecting.
+   Icon: connected, but their camera is off or no video arrives. Any other state: text only. */
+#remote-placeholder .searching,
+#remote-placeholder .cam-off-icon {
+  display: none;
+}
+
+#remote-placeholder[data-state="searching"] .searching,
+#remote-placeholder[data-state="connecting"] .searching,
+#remote-placeholder[data-state="waiting"] .searching {
+  display: flex;
+}
+
+#remote-placeholder[data-state="camera-off"] .cam-off-icon,
+#remote-placeholder[data-state="novideo"] .cam-off-icon {
+  display: flex;
 }
 
 @keyframes spinRing {
@@ -1511,6 +1531,68 @@ input[type="text"]:focus-visible,
 .whats-new .plate-btn {
   flex: none;
   min-height: 36px;
+}
+
+/* ----- Get Ready step (Video + Text): your camera before a stranger can see you ----- */
+.ready {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 26px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ready[hidden] {
+  display: none;
+}
+
+.ready-hint {
+  margin-top: -8px;
+  color: var(--vinyl-dim);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.ready-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: min(46vh, 400px);
+  max-height: min(46dvh, 400px);
+  overflow: hidden;
+  background: #000;
+  border: 4px solid var(--navy);
+  border-radius: 6px;
+}
+
+.ready-preview video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ready-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ready-actions .route {
+  flex: 1 1 220px;
+}
+
+.ready-actions .plate-btn {
+  flex: 0 1 120px;
+  min-height: 52px;
+}
+
+/* While getting ready, only this step is shown. */
+#app-screen.get-ready .stage,
+#app-screen.get-ready .whats-new {
+  display: none;
 }
 
 /* ----- Online count (login page and Match Setup) ----- */
@@ -2299,7 +2381,7 @@ input[type="text"]:focus-visible,
   }
 
   /* In the small window the two buttons sit along the top edge, small, clear of the "You" tag. */
-  #app-screen.feed-overlay .media-toggles {
+  #app-screen.feed-overlay .pip-self-video .media-toggles {
     top: 4px;
     right: auto;
     bottom: auto;
@@ -2308,12 +2390,12 @@ input[type="text"]:focus-visible,
     transform: translateX(-50%);
   }
 
-  #app-screen.feed-overlay .media-btn {
+  #app-screen.feed-overlay .pip-self-video .media-btn {
     width: 26px;
     height: 26px;
   }
 
-  #app-screen.feed-overlay .media-btn svg {
+  #app-screen.feed-overlay .pip-self-video .media-btn svg {
     width: 14px;
     height: 14px;
   }

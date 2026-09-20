@@ -93,6 +93,12 @@ const remoteVideo = document.getElementById("remote-video");
 const statusText = document.getElementById("status-text");
 const statusBar = document.getElementById("status-bar");
 const localPlaceholder = document.getElementById("local-placeholder");
+const readyPanel = document.getElementById("ready-panel");
+const readyVideo = document.getElementById("ready-video");
+const readyPlaceholder = document.getElementById("ready-placeholder");
+const readyHint = document.getElementById("ready-hint");
+// Your camera preview appears in two places (in a chat, and on the Get Ready step); they change together.
+const localPlaceholders = [localPlaceholder, readyPlaceholder];
 const remotePlaceholder = document.getElementById("remote-placeholder");
 const remotePlaceholderText = document.getElementById("remote-placeholder-text");
 const localBadge = document.getElementById("local-badge");
@@ -378,7 +384,7 @@ function initSocket() {
   socket.on("waiting", () => {
     setStatus("waiting", "Searching for a match...");
     // Let "Stranger disconnected" stay readable for a moment before this text replaces it.
-    if (disconnectNoticeTimer === null) remotePlaceholderText.textContent = "Searching for a match...";
+    if (disconnectNoticeTimer === null) setRemoteBox("searching", "Searching for a match...");
   });
 
   socket.on("match-found", async ({ roomId, initiator, partner, mode, matchInfo }) => {
@@ -401,7 +407,7 @@ function initSocket() {
     } else {
       videoContainer.style.display = "flex";
       setStatus("waiting", "Matched! Connecting...");
-      remotePlaceholderText.textContent = "Connecting...";
+      setRemoteBox("connecting", "Connecting...");
       sendMediaState(); // a new stranger has to learn if you are already muted or have your camera off
       peerReady = startPeerConnection();
       await peerReady;
@@ -705,39 +711,86 @@ try {
 applyFeedLayout(savedFeedLayout);
 
 // ---------- Matchmaking controls ----------
+// Video + Text starts with a "Get ready" step: your own camera with the mic and camera switches, so you
+// can check yourself before a stranger can see you. Nothing is sent to the server until you press
+// "Start matching". Text Only has no camera, so it skips the step and starts matching at once.
+let pendingProfile = null;
+
 findBtn.addEventListener("click", async () => {
   const college = collegeSelect.value;
   if (!college) return;
 
-  const course = courseInput.value.trim();
-  const matchSameCollege = sameCollegeCheckbox.checked;
-  const mode = getSelectedMode();
+  const profile = {
+    college,
+    course: courseInput.value.trim(),
+    matchSameCollege: sameCollegeCheckbox.checked,
+    mode: getSelectedMode()
+  };
 
-  findBtn.disabled = true;
+  if (profile.mode === "video") await enterReadyStep(profile);
+  else startMatching(profile);
+});
 
-  if (mode === "video") {
-    try {
-      await getLocalMedia();
-    } catch (err) {
-      // Camera/mic is optional — text chat works over the socket connection
-      // regardless, so a missing/blocked camera should never block matching.
-      console.error("[RTC] Camera/mic error:", err.name, "-", err.message);
-    }
-    videoContainer.style.display = "flex";
-  } else {
-    videoContainer.style.display = "none";
+async function enterReadyStep(profile) {
+  findBtn.disabled = true; // no second click while the camera permission prompt is open
+  pendingProfile = profile;
+
+  try {
+    await getLocalMedia();
+  } catch (err) {
+    // Camera/mic is optional. Text chat works over the socket regardless, so a missing or
+    // blocked camera must never stop someone from matching.
+    console.error("[RTC] Camera/mic error:", err.name, "-", err.message);
   }
 
-  currentProfile = { college, course, matchSameCollege, mode };
-  showBadge(localBadge, college, course);
+  if (pendingProfile !== profile) {
+    // Logged out or stopped while the permission prompt was open.
+    releaseLocalMedia();
+    return;
+  }
+
+  readyHint.textContent = localStream
+    ? "Check your camera and microphone. A stranger can see and hear you as soon as you start matching."
+    : "Your camera or microphone is not available. You can still start matching and chat with text.";
+
+  lobbyPanel.style.display = "none";
+  appScreen.classList.add("get-ready");
+  readyPanel.hidden = false;
+  document.getElementById("ready-start").focus();
+}
+
+function leaveReadyStep() {
+  readyPanel.hidden = true;
+  appScreen.classList.remove("get-ready");
+  releaseLocalMedia(); // going back means the camera is not needed any more
+  pendingProfile = null;
+  lobbyPanel.style.display = "flex";
+  findBtn.disabled = !collegeSelect.value;
+}
+
+document.getElementById("ready-back").addEventListener("click", leaveReadyStep);
+document.getElementById("ready-start").addEventListener("click", () => {
+  if (pendingProfile) startMatching(pendingProfile);
+});
+
+// Joins the queue: the part that used to run as soon as Find Match was pressed.
+function startMatching(profile) {
+  findBtn.disabled = true;
+  pendingProfile = null;
+  readyPanel.hidden = true;
+  appScreen.classList.remove("get-ready");
+
+  videoContainer.style.display = profile.mode === "video" ? "flex" : "none";
+  currentProfile = profile;
+  showBadge(localBadge, profile.college, profile.course);
 
   searchingForMatch = true;
   socket.emit("find-match", currentProfile);
   lobbyPanel.style.display = "none";
   appScreen.classList.add("in-call");
-  appScreen.classList.toggle("text-only", mode !== "video");
+  appScreen.classList.toggle("text-only", profile.mode !== "video");
   stopBtn.style.display = "";
-});
+}
 
 // A little longer than the server's one-second find-match cooldown.
 const FIND_MATCH_RETRY_MS = 1100;
@@ -746,7 +799,7 @@ const FIND_MATCH_RETRY_MS = 1100;
 function searchAgain({ keepChat = false } = {}) {
   cleanupPeerOnly({ keepChat });
   setStatus("waiting", "Searching for a match...");
-  remotePlaceholderText.textContent = "Searching for a match...";
+  setRemoteBox("searching", "Searching for a match...");
   searchingForMatch = true;
   socket.emit("find-match", currentProfile);
 }
@@ -809,15 +862,18 @@ async function getLocalMedia() {
 
   localVideo.srcObject = localStream;
   localVideo.play().catch((err) => console.warn("[RTC] localVideo.play() rejected:", err.name));
-  localPlaceholder.classList.add("hidden");
+  readyVideo.srcObject = localStream;
+  readyVideo.play().catch(() => {});
+  localPlaceholders.forEach((el) => el.classList.add("hidden"));
   applyMediaState();
 }
 
 // ---------- Mic and camera switches ----------
 // Switching a track off (track.enabled = false) keeps the connection as it is: the stranger just
 // hears silence or sees a black picture, so nothing has to be renegotiated.
-const micBtn = document.getElementById("mic-btn");
-const camBtn = document.getElementById("cam-btn");
+// Each button exists twice: on your tile in a chat, and on the Get Ready step. Same class, same look.
+const micBtns = [document.getElementById("mic-btn"), document.getElementById("ready-mic-btn")];
+const camBtns = [document.getElementById("cam-btn"), document.getElementById("ready-cam-btn")];
 let micMuted = false;
 let camOff = false;
 
@@ -828,20 +884,23 @@ function applyMediaState() {
   audioTracks.forEach((track) => (track.enabled = !micMuted));
   videoTracks.forEach((track) => (track.enabled = !camOff));
 
-  // Your own tile shows its "Camera off" card while the camera is switched off.
-  if (videoTracks.length) localPlaceholder.classList.toggle("hidden", !camOff);
-
-  micBtn.disabled = !audioTracks.length;
-  camBtn.disabled = !videoTracks.length;
+  // Your own preview shows its "Camera off" card while the camera is switched off.
+  if (videoTracks.length) localPlaceholders.forEach((el) => el.classList.toggle("hidden", !camOff));
 
   const micLabel = micMuted ? "Unmute microphone" : "Mute microphone";
   const camLabel = camOff ? "Turn camera on" : "Turn camera off";
-  micBtn.classList.toggle("is-off", micMuted);
-  camBtn.classList.toggle("is-off", camOff);
-  micBtn.setAttribute("aria-label", micLabel);
-  micBtn.title = micLabel;
-  camBtn.setAttribute("aria-label", camLabel);
-  camBtn.title = camLabel;
+  micBtns.forEach((btn) => {
+    btn.disabled = !audioTracks.length;
+    btn.classList.toggle("is-off", micMuted);
+    btn.setAttribute("aria-label", micLabel);
+    btn.title = micLabel;
+  });
+  camBtns.forEach((btn) => {
+    btn.disabled = !videoTracks.length;
+    btn.classList.toggle("is-off", camOff);
+    btn.setAttribute("aria-label", camLabel);
+    btn.title = camLabel;
+  });
 }
 
 // Tells the stranger's browser, so their screen shows "camera off" / a muted mark, on any device.
@@ -850,32 +909,65 @@ function sendMediaState() {
   socket.emit("media-state", { roomId: currentRoomId, mic: !micMuted, cam: !camOff });
 }
 
-micBtn.addEventListener("click", () => {
-  micMuted = !micMuted;
-  applyMediaState();
-  sendMediaState();
-});
+micBtns.forEach((btn) =>
+  btn.addEventListener("click", () => {
+    micMuted = !micMuted;
+    applyMediaState();
+    sendMediaState();
+  })
+);
 
-camBtn.addEventListener("click", () => {
-  camOff = !camOff;
-  applyMediaState();
-  sendMediaState();
-});
+camBtns.forEach((btn) =>
+  btn.addEventListener("click", () => {
+    camOff = !camOff;
+    applyMediaState();
+    sendMediaState();
+  })
+);
 
 // What the stranger has switched off, as they told us.
 const remoteMicOffMark = document.getElementById("remote-mic-off");
 let remoteMicMuted = false;
 let remoteCamOff = false;
 
+// The stranger's video box is drawn from ONE state: a phase (what the connection is doing) plus
+// whether they told us their camera is off. The spinner, the camera-off icon and the text all come
+// from renderRemoteBox() below, so they can never disagree.
+//   idle        not in a chat                          text only
+//   searching   looking for a stranger                 spinner
+//   connecting  matched, connecting or reconnecting    spinner
+//   waiting     connected, video not here yet          spinner
+//   ready       video needs a tap to start             text only
+//   novideo     connected, but no video after 5 s      camera-off icon
+//   failed      could not connect                      text only
+//   left        the stranger disconnected              text only
+// "camera-off" is not a phase. It is derived: they told us their camera is off, and we are
+// connected and waiting for video. Only then does the icon replace the spinner.
+let remoteBoxPhase = "idle";
+let remoteBoxText = "Not connected yet";
+
+function setRemoteBox(phase, text) {
+  remoteBoxPhase = phase;
+  remoteBoxText = text;
+  renderRemoteBox();
+}
+
+function renderRemoteBox() {
+  const cameraOff =
+    remoteCamOff && (remoteBoxPhase === "waiting" || remoteBoxPhase === "novideo" || remoteBoxPhase === "ready");
+  remotePlaceholder.dataset.state = cameraOff ? "camera-off" : remoteBoxPhase; // style.css picks spinner or icon
+  remotePlaceholderText.textContent = cameraOff ? "Camera off" : remoteBoxText;
+  if (cameraOff) remotePlaceholder.classList.remove("hidden"); // the card returns over the black picture
+}
+
 function applyRemoteMediaState() {
   remoteMicOffMark.hidden = !remoteMicMuted;
+  renderRemoteBox();
 
-  if (remoteCamOff) {
-    remotePlaceholderText.textContent = "Stranger turned their camera off";
-    remotePlaceholder.classList.remove("hidden");
-  } else if (connStatus === "connected") {
-    remotePlaceholderText.textContent = "Connected — waiting for video...";
-    updateRemotePlaceholder(); // hides the card again once real video frames are showing
+  // Camera back on: wait for real video frames, which hide the card again.
+  if (!remoteCamOff && connStatus === "connected") {
+    setRemoteBox("waiting", "Connected — waiting for video...");
+    updateRemotePlaceholder();
   }
 }
 
@@ -883,6 +975,7 @@ function resetRemoteMediaState() {
   remoteMicMuted = false;
   remoteCamOff = false;
   remoteMicOffMark.hidden = true;
+  renderRemoteBox();
 }
 
 function candidateType(candidate) {
@@ -901,7 +994,7 @@ function playRemoteVideo() {
       console.warn("[RTC] remoteVideo.play() rejected:", err.name, "-", err.message);
       // iOS Safari / mobile Chrome block unmuted autoplay until a user gesture.
       if (err.name === "NotAllowedError") {
-        remotePlaceholderText.textContent = "Video is ready — tap to start";
+        setRemoteBox("ready", "Video is ready — tap to start");
         tapToPlayBtn.hidden = false;
       }
     });
@@ -1030,7 +1123,7 @@ function recoverConnection(pc, reason) {
     console.error(`[RTC] Giving up after ${MAX_ICE_RESTARTS} ICE restarts (${reason})`);
     clearTimeout(connectTimer);
     setStatus("ended", "Connection failed. Try Next, or use Text Only mode.");
-    remotePlaceholderText.textContent = "Couldn't connect";
+    setRemoteBox("failed", "Couldn't connect");
     remotePlaceholder.classList.remove("hidden");
     return;
   }
@@ -1072,18 +1165,18 @@ function syncConnectionStatus(pc) {
     clearTimeout(connectTimer);
     iceRestartAttempts = 0;
     setStatus("connected", "Connected");
-    remotePlaceholderText.textContent = "Connected — waiting for video...";
+    setRemoteBox("waiting", "Connected — waiting for video...");
     updateRemotePlaceholder();
     logSelectedCandidatePair(pc);
     setTimeout(() => logMediaFlow(pc), 3000);
     setTimeout(() => {
       if (pc === peerConnection && connStatus === "connected" && remoteVideo.videoWidth === 0) {
-        remotePlaceholderText.textContent = "Stranger's camera is off or unavailable";
+        setRemoteBox("novideo", "Stranger's camera is off or unavailable");
       }
     }, 5000);
   } else if (next === "connecting") {
     setStatus("waiting", "Connecting...");
-    remotePlaceholderText.textContent = iceRestartAttempts ? "Reconnecting..." : "Connecting...";
+    setRemoteBox("connecting", iceRestartAttempts ? "Reconnecting..." : "Connecting...");
   } else if (next === "disconnected") {
     setStatus("waiting", "Connection unstable — reconnecting...");
     disconnectTimer = setTimeout(() => {
@@ -1092,7 +1185,7 @@ function syncConnectionStatus(pc) {
     }, 5000);
   } else if (next === "failed") {
     setStatus("ended", "Connection failed — trying to recover...");
-    remotePlaceholderText.textContent = "Connection failed — retrying...";
+    setRemoteBox("connecting", "Connection failed — retrying...");
     remotePlaceholder.classList.remove("hidden");
     recoverConnection(pc, "failed");
   }
@@ -1326,19 +1419,28 @@ function cleanupPeerOnly({ keepChat = false } = {}) {
   }
 }
 
-function cleanupCall() {
-  cleanupPeerOnly();
+// Turns the camera and mic off for good and puts your previews back to "Camera off".
+function releaseLocalMedia() {
   if (localStream) {
     localStream.getTracks().forEach((track) => track.stop());
     localStream = null;
   }
   localVideo.srcObject = null;
+  readyVideo.srcObject = null;
   micMuted = false;
   camOff = false;
   applyMediaState();
-  localPlaceholder.classList.remove("hidden");
+  localPlaceholders.forEach((el) => el.classList.remove("hidden"));
+}
+
+function cleanupCall() {
+  cleanupPeerOnly();
+  releaseLocalMedia();
+  pendingProfile = null; // also ends an unfinished Get Ready step (for example on logout)
+  readyPanel.hidden = true;
+  appScreen.classList.remove("get-ready");
   hideBadge(localBadge);
-  remotePlaceholderText.textContent = "Not connected yet";
+  setRemoteBox("idle", "Not connected yet");
   currentRoomId = null;
   toggleControls(false);
   stopBtn.style.display = "none";
@@ -1398,10 +1500,10 @@ function appendChatMessage(sender, message, messageId, reply) {
 // The stranger's video box says "Stranger disconnected" for a moment, then goes back to searching.
 function showDisconnectNotice() {
   clearTimeout(disconnectNoticeTimer);
-  remotePlaceholderText.textContent = "Stranger disconnected";
+  setRemoteBox("left", "Stranger disconnected");
   disconnectNoticeTimer = setTimeout(() => {
     disconnectNoticeTimer = null;
-    if (searchingForMatch) remotePlaceholderText.textContent = "Searching for a match...";
+    if (searchingForMatch) setRemoteBox("searching", "Searching for a match...");
   }, DISCONNECT_NOTICE_MS);
 }
 
